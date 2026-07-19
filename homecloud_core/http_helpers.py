@@ -1,0 +1,103 @@
+"""Shared HTTP helpers for sync and async transports."""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+from urllib.parse import urljoin
+
+import httpx
+
+from homecloud_core.defaults import mq_url, secrets_url, so_url
+from homecloud_core.errors import HomeCloudError
+from homecloud_core.signing import sign_request_headers
+
+Plane = Literal["console", "mq", "so", "secrets"]
+
+MAX_RETRIES = 2
+RETRY_STATUS = {502, 503, 504}
+
+
+def require_access_key(access_key_id: str | None, secret_access_key: str | None) -> None:
+    if not access_key_id or not secret_access_key:
+        raise HomeCloudError(
+            "Access Key not configured. "
+            "Run: homecloud configure, or set HOMECLOUD_ACCESS_KEY_ID / HC_ACCESS_KEY_ID"
+        )
+
+
+def data_plane_base_urls(apex: str) -> dict[str, str]:
+    return {
+        "mq": mq_url(apex),
+        "so": so_url(apex),
+        "secrets": secrets_url(apex),
+    }
+
+
+def signed_data_plane_url(
+    *,
+    apex: str,
+    plane: Plane,
+    access_key_id: str,
+    secret_access_key: str,
+    method: str,
+    path: str,
+    account_id: str,
+    url_path: str | None = None,
+) -> tuple[str, dict[str, str]]:
+    require_access_key(access_key_id, secret_access_key)
+    base = data_plane_base_urls(apex)[plane]
+    headers = sign_request_headers(
+        access_key_id=access_key_id,
+        secret=secret_access_key,
+        method=method,
+        path=path,
+        account_id=account_id,
+    )
+    url = f"{base.rstrip('/')}{url_path or path}"
+    return url, headers
+
+
+def console_request_url(apex: str, path: str) -> str:
+    from homecloud_core.defaults import console_url
+
+    return urljoin(console_url(apex).rstrip("/") + "/", path.lstrip("/"))
+
+
+def parse_response(response: httpx.Response) -> Any:
+    if response.is_success:
+        if not response.content:
+            return {}
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise HomeCloudError(
+                f"Invalid JSON response ({response.status_code}) from {response.request.url}",
+                status_code=response.status_code,
+            ) from exc
+
+    detail: Any
+    try:
+        body = response.json()
+        detail = body.get("detail", body)
+    except Exception:
+        detail = response.text
+
+    raise HomeCloudError(
+        f"Request failed ({response.status_code})",
+        status_code=response.status_code,
+        detail=detail,
+    )
+
+
+def error_from_failed_response(response: httpx.Response) -> HomeCloudError:
+    detail: Any
+    try:
+        body = response.json()
+        detail = body.get("detail", body)
+    except Exception:
+        detail = response.text
+    return HomeCloudError(
+        f"Request failed ({response.status_code})",
+        status_code=response.status_code,
+        detail=detail,
+    )

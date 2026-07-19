@@ -12,7 +12,7 @@ Python SDK for HomeCloud (`pip install homecloud-sdk`).
 Access Keys are created once in the Console (human + MFA there). Runtime SDK calls do **not** re-prompt MFA.
 
 ```python
-from homecloud_sdk import HomeCloud
+from homecloud import HomeCloud
 
 # Recommended — explicit credentials (CI / servers)
 client = HomeCloud(
@@ -35,14 +35,27 @@ client.mq.send("orders", {"id": 1})
 # client.login_browser()
 ```
 
+### Async
+
+```python
+from homecloud import AsyncHomeCloud
+
+async with AsyncHomeCloud.from_env() as client:
+    meta = await client.so.head_object("docs", "a.txt")
+    await client.mq.send("orders", {"id": 1})
+```
+
+`from homecloud_sdk import …` still works (compatibility). Prefer `from homecloud import …`.
+
 ## Architecture
 
 ```text
+homecloud/          ← preferred public import
 homecloud_core/     ← auth, routing, signing, sessions, MFA helpers
-homecloud_sdk/      ← public API (HomeCloud / HomeCloudClient)
+homecloud_sdk/      ← HomeCloud + AsyncHomeCloud
 ```
 
-CLI (`homecloud-cli`) is a Typer/Rich wrapper; it opts into `interactive_mfa=True`.
+CLI (`homecloud-cli`) is a Typer/Rich wrapper; it opts into `interactive_mfa=True` on the sync client.
 
 ## Install
 
@@ -56,7 +69,7 @@ Until PyPI is configured, use a Git checkout or sibling editable install:
 pip install -e "../homecloud-sdk"
 ```
 
-PyPI publish is wired via `.github/workflows/publish-pypi.yml` (tag `v*` + `PYPI_API_TOKEN` or Trusted Publishing).
+PyPI publish is wired via `.github/workflows/publish-pypi.yml` (tag `v*` + Trusted Publishing).
 
 ## Operations by plane
 
@@ -68,6 +81,8 @@ PyPI publish is wired via `.github/workflows/publish-pypi.yml` (tag `v*` + `PYPI
 | `account_id()` | Access Key whoami | No JWT |
 | `so.list_buckets` / `create_bucket` | Console JWT | Management helper |
 | `queues.list` / `apps.list` / `accounts.*` | Console JWT | Management helper |
+
+Async mirrors the same surface on `AsyncHomeCloud` (`await client.so.…`).
 
 ## Configuration
 

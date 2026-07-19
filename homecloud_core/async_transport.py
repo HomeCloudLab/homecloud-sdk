@@ -1,23 +1,22 @@
-"""Unified HTTP transport — auth and routing are internal."""
+"""Async HTTP transport — mirror of Transport with httpx.AsyncClient."""
 
 from __future__ import annotations
 
+import asyncio
 import json
-import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
 
 import httpx
 
-from homecloud_core.defaults import WHOAMI_ACCOUNT_SENTINEL, WHOAMI_PATH, console_url, so_url
+from homecloud_core.defaults import WHOAMI_ACCOUNT_SENTINEL, WHOAMI_PATH, so_url
 from homecloud_core.errors import HomeCloudError, NotLoggedInError
 from homecloud_core.http_helpers import (
     MAX_RETRIES,
     RETRY_STATUS,
     Plane,
+    console_request_url,
     error_from_failed_response,
     parse_response,
     require_access_key,
@@ -25,11 +24,16 @@ from homecloud_core.http_helpers import (
 )
 from homecloud_core.signing import sign_request_headers
 
-# Re-export for callers that imported Plane from transport.
-__all__ = ["Plane", "Transport"]
+__all__ = ["AsyncTransport", "Plane"]
 
 
-class Transport:
+class AsyncTransport:
+    """Same surface as :class:`Transport`, but all I/O is async.
+
+    Interactive MFA resolvers are not supported on the async path — pass a
+    console JWT / Access Key already resolved outside the event loop.
+    """
+
     def __init__(
         self,
         *,
@@ -38,36 +42,31 @@ class Transport:
         secret_access_key: str | None,
         access_token: str | None,
         timeout: float = 30.0,
-        mfa_resolver: Any | None = None,
     ) -> None:
         self.apex = apex
         self.access_key_id = access_key_id
         self.secret_access_key = secret_access_key
         self.access_token = access_token
         self.timeout = timeout
-        self._mfa_resolver = mfa_resolver
-        self._http_client: httpx.Client | None = None
-        self._http_lock = threading.Lock()
+        self._http_client: httpx.AsyncClient | None = None
+        self._http_lock = asyncio.Lock()
 
-    def set_mfa_resolver(self, resolver: Any | None) -> None:
-        self._mfa_resolver = resolver
-
-    def _http(self) -> httpx.Client:
-        with self._http_lock:
+    async def _http(self) -> httpx.AsyncClient:
+        async with self._http_lock:
             if self._http_client is None:
-                self._http_client = httpx.Client(
+                self._http_client = httpx.AsyncClient(
                     timeout=httpx.Timeout(self.timeout),
                     limits=httpx.Limits(max_connections=100, max_keepalive_connections=32),
                 )
             return self._http_client
 
-    def close(self) -> None:
-        with self._http_lock:
+    async def aclose(self) -> None:
+        async with self._http_lock:
             if self._http_client is not None:
-                self._http_client.close()
+                await self._http_client.aclose()
                 self._http_client = None
 
-    def console_request(
+    async def console_request(
         self,
         method: str,
         path: str,
@@ -75,7 +74,6 @@ class Transport:
         json: Any | None = None,
         params: dict[str, Any] | None = None,
         require_auth: bool = True,
-        _skip_mfa: bool = False,
     ) -> Any:
         if require_auth and not self.access_token:
             raise NotLoggedInError("Not logged in. Run: homecloud login")
@@ -84,44 +82,10 @@ class Transport:
         if require_auth and self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
 
-        url = urljoin(console_url(self.apex).rstrip("/") + "/", path.lstrip("/"))
-        try:
-            return self._request(method, url, headers=headers, json=json, params=params)
-        except HomeCloudError as exc:
-            if _skip_mfa or self._mfa_resolver is None:
-                raise
-            from homecloud_core.mfa import is_mfa_required
+        url = console_request_url(self.apex, path)
+        return await self._request(method, url, headers=headers, json=json, params=params)
 
-            if not is_mfa_required(exc):
-                raise
-
-            def retry(
-                retry_method: str,
-                retry_path: str,
-                *,
-                json: Any | None = None,
-                require_auth: bool = True,
-                _skip_mfa: bool = True,
-                **_kwargs: Any,
-            ) -> Any:
-                return self.console_request(
-                    retry_method,
-                    retry_path,
-                    json=json,
-                    params=params,
-                    require_auth=require_auth,
-                    _skip_mfa=_skip_mfa,
-                )
-
-            return self._mfa_resolver.resolve(
-                exc,
-                method=method,
-                path=path,
-                json_body=json,
-                retry=retry,
-            )
-
-    def data_plane_request_bytes(
+    async def data_plane_request_bytes(
         self,
         plane: Plane,
         method: str,
@@ -131,7 +95,6 @@ class Transport:
         url_path: str | None = None,
         params: dict[str, Any] | None = None,
     ) -> bytes:
-        """Raw response body for binary endpoints (e.g. SO object download)."""
         require_access_key(self.access_key_id, self.secret_access_key)
         assert self.access_key_id and self.secret_access_key
         url, headers = signed_data_plane_url(
@@ -145,14 +108,14 @@ class Transport:
             url_path=url_path,
         )
         last_error: HomeCloudError | None = None
-        client = self._http()
+        client = await self._http()
         for attempt in range(MAX_RETRIES + 1):
             try:
-                response = client.request(method, url, headers=headers, params=params)
+                response = await client.request(method, url, headers=headers, params=params)
             except httpx.HTTPError as exc:
                 if attempt == MAX_RETRIES:
                     raise HomeCloudError(f"Request failed: {exc}") from exc
-                time.sleep(0.5 * (attempt + 1))
+                await asyncio.sleep(0.5 * (attempt + 1))
                 continue
             if response.status_code not in RETRY_STATUS or attempt == MAX_RETRIES:
                 if response.is_success:
@@ -162,10 +125,10 @@ class Transport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            time.sleep(0.5 * (attempt + 1))
+            await asyncio.sleep(0.5 * (attempt + 1))
         raise last_error or HomeCloudError("Request failed")
 
-    def data_plane_download_to_file(
+    async def data_plane_download_to_file(
         self,
         plane: Plane,
         path: str,
@@ -176,7 +139,6 @@ class Transport:
         params: dict[str, Any] | None = None,
         on_chunk: Callable[[int], None] | None = None,
     ) -> int:
-        """Stream a binary response to disk (for large SO objects)."""
         require_access_key(self.access_key_id, self.secret_access_key)
         assert self.access_key_id and self.secret_access_key
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -192,11 +154,11 @@ class Transport:
             url_path=url_path,
         )
         last_error: HomeCloudError | None = None
-        client = self._http()
+        client = await self._http()
         download_timeout = httpx.Timeout(30.0, read=None)
         for attempt in range(MAX_RETRIES + 1):
             try:
-                with client.stream(
+                async with client.stream(
                     "GET",
                     url,
                     headers=headers,
@@ -208,12 +170,12 @@ class Transport:
                             f"Request failed ({response.status_code})",
                             status_code=response.status_code,
                         )
-                        time.sleep(0.5 * (attempt + 1))
+                        await asyncio.sleep(0.5 * (attempt + 1))
                         continue
                     if not response.is_success:
                         detail: Any
                         try:
-                            body = response.read()
+                            body = await response.aread()
                             parsed = json.loads(body)
                             detail = parsed.get("detail", parsed)
                         except Exception:
@@ -226,7 +188,7 @@ class Transport:
 
                     nbytes = 0
                     with dest.open("wb") as handle:
-                        for chunk in response.iter_bytes(1024 * 1024):
+                        async for chunk in response.aiter_bytes(1024 * 1024):
                             handle.write(chunk)
                             chunk_len = len(chunk)
                             nbytes += chunk_len
@@ -238,11 +200,11 @@ class Transport:
             except httpx.HTTPError as exc:
                 if attempt == MAX_RETRIES:
                     raise HomeCloudError(f"Request failed: {exc}") from exc
-                time.sleep(0.5 * (attempt + 1))
+                await asyncio.sleep(0.5 * (attempt + 1))
                 continue
         raise last_error or HomeCloudError("Request failed")
 
-    def data_plane_request(
+    async def data_plane_request(
         self,
         plane: Plane,
         method: str,
@@ -267,7 +229,7 @@ class Transport:
             account_id=account_id,
             url_path=url_path,
         )
-        return self._request(
+        return await self._request(
             method,
             url,
             headers=headers,
@@ -277,7 +239,7 @@ class Transport:
             files=files,
         )
 
-    def _request(
+    async def _request(
         self,
         method: str,
         url: str,
@@ -289,10 +251,10 @@ class Transport:
         files: dict[str, Any] | None = None,
     ) -> Any:
         last_error: HomeCloudError | None = None
-        client = self._http()
+        client = await self._http()
         for attempt in range(MAX_RETRIES + 1):
             try:
-                response = client.request(
+                response = await client.request(
                     method,
                     url,
                     headers=headers,
@@ -304,7 +266,7 @@ class Transport:
             except httpx.HTTPError as exc:
                 if attempt == MAX_RETRIES:
                     raise HomeCloudError(f"Request failed: {exc}") from exc
-                time.sleep(0.5 * (attempt + 1))
+                await asyncio.sleep(0.5 * (attempt + 1))
                 continue
             if response.status_code not in RETRY_STATUS or attempt == MAX_RETRIES:
                 return parse_response(response)
@@ -312,10 +274,10 @@ class Transport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            time.sleep(0.5 * (attempt + 1))
+            await asyncio.sleep(0.5 * (attempt + 1))
         raise last_error or HomeCloudError("Request failed")
 
-    def resolve_access_key_account_id(self) -> str:
+    async def resolve_access_key_account_id(self) -> str:
         require_access_key(self.access_key_id, self.secret_access_key)
         assert self.access_key_id and self.secret_access_key
 
@@ -327,12 +289,8 @@ class Transport:
             account_id=WHOAMI_ACCOUNT_SENTINEL,
         )
         url = f"{so_url(self.apex).rstrip('/')}{WHOAMI_PATH}"
-        data = self._request("GET", url, headers=headers)
+        data = await self._request("GET", url, headers=headers)
         account_id = data.get("account_id")
         if not account_id:
             raise HomeCloudError("Could not resolve account from Access Key")
         return str(account_id)
-
-    @staticmethod
-    def _parse(response: httpx.Response) -> Any:
-        return parse_response(response)
