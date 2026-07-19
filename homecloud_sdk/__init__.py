@@ -2,7 +2,19 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from homecloud_core.errors import HomeCloudError, NotConfiguredError, NotLoggedInError
+from homecloud_core.errors import (
+    ApiError,
+    BadRequestError,
+    ConflictError,
+    HomeCloudError,
+    NotConfiguredError,
+    NotFoundError,
+    NotLoggedInError,
+    PermissionDeniedError,
+    RateLimitError,
+    ServiceUnavailableError,
+    UnauthorizedError,
+)
 from homecloud_core.mfa import PreferBrowserLogin
 from homecloud_sdk.async_client import AsyncHomeCloud, AsyncHomeCloudClient
 from homecloud_sdk.client import HomeCloud, HomeCloudClient
@@ -15,13 +27,21 @@ except PackageNotFoundError:  # pragma: no cover
 
 __all__ = [
     "DEFAULT_SO_WORKERS",
+    "ApiError",
     "AsyncHomeCloud",
     "AsyncHomeCloudClient",
+    "BadRequestError",
+    "ConflictError",
     "HomeCloud",
     "HomeCloudClient",
     "HomeCloudError",
     "NotConfiguredError",
+    "NotFoundError",
     "NotLoggedInError",
+    "PermissionDeniedError",
     "PreferBrowserLogin",
+    "RateLimitError",
+    "ServiceUnavailableError",
+    "UnauthorizedError",
     "__version__",
 ]

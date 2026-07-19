@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -173,18 +172,11 @@ class AsyncTransport:
                         await asyncio.sleep(0.5 * (attempt + 1))
                         continue
                     if not response.is_success:
-                        detail: Any
                         try:
-                            body = await response.aread()
-                            parsed = json.loads(body)
-                            detail = parsed.get("detail", parsed)
+                            await response.aread()
                         except Exception:
-                            detail = response.text or response.reason_phrase
-                        raise HomeCloudError(
-                            f"Request failed ({response.status_code})",
-                            status_code=response.status_code,
-                            detail=detail,
-                        )
+                            pass
+                        raise error_from_failed_response(response)
 
                     nbytes = 0
                     with dest.open("wb") as handle:

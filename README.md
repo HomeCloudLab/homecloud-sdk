@@ -47,6 +47,33 @@ async with AsyncHomeCloud.from_env() as client:
 
 `from homecloud_sdk import …` still works (compatibility). Prefer `from homecloud import …`.
 
+### Errors
+
+HTTP failures raise typed subclasses of `HomeCloudError` (catch specific types or the base):
+
+| Type | Typical status |
+|------|----------------|
+| `NotFoundError` | 404 (bucket / object / queue) |
+| `UnauthorizedError` | 401 |
+| `PermissionDeniedError` | 403 |
+| `BadRequestError` | 400 |
+| `ConflictError` | 409 |
+| `RateLimitError` | 429 |
+| `ServiceUnavailableError` | 502–504 |
+| `ApiError` | other HTTP errors |
+
+```python
+from homecloud import HomeCloud, NotFoundError, HomeCloudError
+
+client = HomeCloud()
+try:
+    client.so.head_object("docs", "a.txt")
+except NotFoundError as exc:
+    print(exc.resource_type, exc.resource, exc)  # object / docs/a.txt / …
+except HomeCloudError as exc:
+    print(exc.status_code, exc)
+```
+
 ## Architecture
 
 ```text

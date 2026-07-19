@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import threading
 import time
 from collections.abc import Callable
@@ -211,18 +210,12 @@ class Transport:
                         time.sleep(0.5 * (attempt + 1))
                         continue
                     if not response.is_success:
-                        detail: Any
+                        # Materialize body so error_from_failed_response can parse JSON.
                         try:
-                            body = response.read()
-                            parsed = json.loads(body)
-                            detail = parsed.get("detail", parsed)
+                            response.read()
                         except Exception:
-                            detail = response.text or response.reason_phrase
-                        raise HomeCloudError(
-                            f"Request failed ({response.status_code})",
-                            status_code=response.status_code,
-                            detail=detail,
-                        )
+                            pass
+                        raise error_from_failed_response(response)
 
                     nbytes = 0
                     with dest.open("wb") as handle:

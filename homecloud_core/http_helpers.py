@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 import httpx
 
 from homecloud_core.defaults import mq_url, secrets_url, so_url
-from homecloud_core.errors import HomeCloudError
+from homecloud_core.errors import HomeCloudError, error_from_status
 from homecloud_core.signing import sign_request_headers
 
 Plane = Literal["console", "mq", "so", "secrets"]
@@ -63,6 +63,14 @@ def console_request_url(apex: str, path: str) -> str:
     return urljoin(console_url(apex).rstrip("/") + "/", path.lstrip("/"))
 
 
+def _response_detail(response: httpx.Response) -> Any:
+    try:
+        body = response.json()
+        return body.get("detail", body)
+    except Exception:
+        return response.text
+
+
 def parse_response(response: httpx.Response) -> Any:
     if response.is_success:
         if not response.content:
@@ -75,29 +83,16 @@ def parse_response(response: httpx.Response) -> Any:
                 status_code=response.status_code,
             ) from exc
 
-    detail: Any
-    try:
-        body = response.json()
-        detail = body.get("detail", body)
-    except Exception:
-        detail = response.text
-
-    raise HomeCloudError(
-        f"Request failed ({response.status_code})",
-        status_code=response.status_code,
-        detail=detail,
+    raise error_from_status(
+        response.status_code,
+        detail=_response_detail(response),
+        url=str(response.request.url),
     )
 
 
 def error_from_failed_response(response: httpx.Response) -> HomeCloudError:
-    detail: Any
-    try:
-        body = response.json()
-        detail = body.get("detail", body)
-    except Exception:
-        detail = response.text
-    return HomeCloudError(
-        f"Request failed ({response.status_code})",
-        status_code=response.status_code,
-        detail=detail,
+    return error_from_status(
+        response.status_code,
+        detail=_response_detail(response),
+        url=str(response.request.url),
     )
