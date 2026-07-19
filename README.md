@@ -44,13 +44,19 @@ homecloud_sdk/      ← public API (HomeCloud / HomeCloudClient)
 
 CLI (`homecloud-cli`) is a Typer/Rich wrapper; it opts into `interactive_mfa=True`.
 
-## Install (local)
+## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install homecloud-sdk
 ```
 
-PyPI publish after final review.
+Until PyPI is configured, use a Git checkout or sibling editable install:
+
+```bash
+pip install -e "../homecloud-sdk"
+```
+
+PyPI publish is wired via `.github/workflows/publish-pypi.yml` (tag `v*` + `PYPI_API_TOKEN` or Trusted Publishing).
 
 ## Operations by plane
 
