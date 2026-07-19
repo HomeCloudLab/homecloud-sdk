@@ -188,11 +188,18 @@ class CoreContext:
         *,
         open_browser: bool = True,
         on_waiting: Callable[[str], None] | None = None,
+        mfa_token: str | None = None,
     ) -> None:
-        """Browser/passkey console login — interactive tools only."""
+        """Browser/passkey console login — interactive tools only.
+
+        If ``mfa_token`` is set (password already verified), the browser page
+        resumes MFA only and does not ask for the password again.
+        """
+        start_body: dict[str, Any] | None = {"mfa_token": mfa_token} if mfa_token else None
         start = self._transport.console_request(
             "POST",
             "auth/cli/session",
+            json=start_body,
             require_auth=False,
         )
         session_id = start.get("session_id")

@@ -124,8 +124,13 @@ class AsyncHomeCloudClient:
         *,
         open_browser: bool = True,
         on_waiting: Callable[[str], None] | None = None,
+        mfa_token: str | None = None,
     ) -> None:
-        await self._ctx.login_browser(open_browser=open_browser, on_waiting=on_waiting)
+        await self._ctx.login_browser(
+            open_browser=open_browser,
+            on_waiting=on_waiting,
+            mfa_token=mfa_token,
+        )
 
     def configure(
         self,

@@ -159,11 +159,14 @@ class AsyncCoreContext:
         *,
         open_browser: bool = True,
         on_waiting: Callable[[str], None] | None = None,
+        mfa_token: str | None = None,
     ) -> None:
         """Browser/passkey console login — polls asynchronously."""
+        start_body = {"mfa_token": mfa_token} if mfa_token else None
         start = await self._transport.console_request(
             "POST",
             "auth/cli/session",
+            json=start_body,
             require_auth=False,
         )
         session_id = start.get("session_id")

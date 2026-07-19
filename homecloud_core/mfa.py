@@ -12,7 +12,23 @@ MfaMethodChooser = Callable[[list[str], list[dict] | None], str]
 
 
 class PreferBrowserLogin(Exception):
-    """User chose passkey/browser to finish authentication."""
+    """User chose passkey/browser to finish authentication.
+
+    When ``mfa_token`` is set, password was already verified — browser should
+    resume MFA only (no second password prompt).
+    """
+
+    def __init__(
+        self,
+        *,
+        mfa_token: str | None = None,
+        methods: list[str] | None = None,
+        passkeys: list[dict] | None = None,
+    ) -> None:
+        super().__init__("Prefer browser login")
+        self.mfa_token = mfa_token
+        self.methods = methods or []
+        self.passkeys = passkeys or []
 
 
 def is_mfa_required(exc: HomeCloudError) -> bool:
@@ -57,6 +73,7 @@ class MfaResolver:
         methods: list[str] | None = None,
         passkeys: list[dict] | None = None,
         allow_browser_switch: bool = True,
+        mfa_token: str | None = None,
     ) -> str:
         if self._mfa_code:
             code = self._mfa_code
@@ -79,7 +96,11 @@ class MfaResolver:
                 raise HomeCloudError(
                     "Passkey confirmation is only available in the Console UI for this action."
                 )
-            raise PreferBrowserLogin()
+            raise PreferBrowserLogin(
+                mfa_token=mfa_token,
+                methods=methods,
+                passkeys=passkeys,
+            )
 
         return prompt_verification_code(self._prompt)
 
@@ -104,6 +125,7 @@ class MfaResolver:
             methods=methods,
             passkeys=[p for p in passkeys if isinstance(p, dict)] if passkeys else None,
             allow_browser_switch=allow_browser,
+            mfa_token=str(mfa_token) if mfa_token else None,
         )
 
         if mfa_token:
