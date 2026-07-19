@@ -3,23 +3,23 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from homecloud_core.defaults import DEFAULT_PROFILE, platform_apex
+from homecloud_core.env import env_config_dir, env_credentials_file
 
 
 def homecloud_dir() -> Path:
-    override = os.environ.get("HOMECLOUD_CONFIG_DIR")
+    override = env_config_dir()
     if override:
         return Path(override).expanduser()
     return Path.home() / ".homecloud"
 
 
 def credentials_path() -> Path:
-    override = os.environ.get("HOMECLOUD_CREDENTIALS_FILE")
+    override = env_credentials_file()
     if override:
         return Path(override).expanduser()
     return homecloud_dir() / "credentials"

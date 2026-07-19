@@ -1,41 +1,106 @@
 # HomeCloud SDK
 
-Python SDK and internal core for HomeCloud. This is the **PyPI package** (`pip install homecloud-sdk`).
+Python SDK for HomeCloud (`pip install homecloud-sdk`).
+
+## Auth model (cloud-style)
+
+| Who | How | MFA |
+|-----|-----|-----|
+| **SDK / automation** | Access Key ID + Secret (SigV1 data plane) | Never on requests |
+| **CLI / humans** | `homecloud login` → console JWT | At login / step-up only |
+
+Access Keys are created once in the Console (human + MFA there). Runtime SDK calls do **not** re-prompt MFA.
+
+```python
+from homecloud_sdk import HomeCloud
+
+# Recommended — explicit credentials (CI / servers)
+client = HomeCloud(
+    access_key="HCAK...",
+    secret_key="...",
+)
+
+# Or environment (HOMECLOUD_* / HC_*)
+client = HomeCloud.from_env()
+
+# Or ~/.homecloud/credentials (+ optional HC_PROFILE)
+client = HomeCloud()
+
+# Data plane — Access Key only, no login
+client.so.upload("docs", "./file.txt", key="a.txt")
+client.mq.send("orders", {"id": 1})
+
+# Interactive helpers only (CLI/tools) — may involve MFA
+# client.login("alice", "…")
+# client.login_browser()
+```
 
 ## Architecture
 
 ```text
-homecloud_core/     ← all logic (auth, routing, signing, sessions)
-homecloud_sdk/      ← public API (HomeCloudClient)
+homecloud_core/     ← auth, routing, signing, sessions, MFA helpers
+homecloud_sdk/      ← public API (HomeCloud / HomeCloudClient)
 ```
 
-CLI (`homecloud-cli`) is a thin wrapper — it only calls `HomeCloudClient`.
+CLI (`homecloud-cli`) is a Typer/Rich wrapper; it opts into `interactive_mfa=True`.
 
-## Usage
+## Install (local)
 
-```python
-from homecloud_sdk import HomeCloudClient
-
-client = HomeCloudClient()
-
-client.login("you@example.com", "password")
-client.apps.list()
-client.mq.send("orders", {"id": 1})
-client.queues.list()
+```bash
+pip install -e ".[dev]"
 ```
+
+PyPI publish after final review.
+
+## Operations by plane
+
+| API | Auth | Notes |
+|-----|------|-------|
+| `so.upload` / `download` / `sync_*` / `list_objects` / `delete` | Access Key | Primary SDK path |
+| `so.head_object` (`object_metadata`) | Access Key | Metadata only — no object body (AWS HeadObject) |
+| `mq.send` / `receive` | Access Key | Primary SDK path |
+| `account_id()` | Access Key whoami | No JWT |
+| `so.list_buckets` / `create_bucket` | Console JWT | Management helper |
+| `queues.list` / `apps.list` / `accounts.*` | Console JWT | Management helper |
 
 ## Configuration
 
 | File | Purpose |
 |------|---------|
-| `~/.homecloud/credentials` | Access Keys (persistent) |
-| `~/.homecloud/session` | Login session (temporary) |
+| `~/.homecloud/credentials` | Access Keys (multi-profile JSON) |
+| `~/.homecloud/session` | Console JWT (interactive only) |
 
-Users never pass account IDs, JWT, or endpoint URLs.
+### Profile / env
+
+1. Constructor `profile=` / `access_key_id=` …
+2. `HOMECLOUD_PROFILE` / `HC_PROFILE`
+3. credentials `default_profile`
+4. `default`
+
+| Variable | Short | Effect |
+|----------|-------|--------|
+| `HOMECLOUD_PROFILE` | `HC_PROFILE` | Active profile |
+| `HOMECLOUD_ACCESS_KEY_ID` | `HC_ACCESS_KEY_ID` | Access key |
+| `HOMECLOUD_SECRET_ACCESS_KEY` | `HC_SECRET_ACCESS_KEY` | Secret |
+| `HOMECLOUD_ACCOUNT_ID` | `HC_ACCOUNT_ID` | Optional account |
+| `HOMECLOUD_APEX` | `HC_APEX` | Platform domain |
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
 pytest tests/ -q
+pytest tests/test_live_integration.py -q   # needs Access Keys in ~/.homecloud
 ```
+
+### Service-account verification (pre-PyPI)
+
+Mints a dedicated Access Key named `homecloud-sdk-test` (requires a one-time
+`homecloud login` to create the key), then runs a **clean subprocess** with
+`HomeCloud.from_env()` — no JWT session, no MFA, no browser:
+
+```bash
+python scripts/verify_service_account_flow.py
+```
+
+Expected: `PASS: service-account flow works without login/JWT/MFA/browser`.

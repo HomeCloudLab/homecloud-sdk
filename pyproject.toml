@@ -1,9 +1,12 @@
 [project]
 name = "homecloud-sdk"
-version = "0.2.0"
+version = "0.3.2"
 description = "HomeCloud Python SDK and core client library"
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "HomeCloud" }]
+keywords = ["homecloud", "sdk", "object-storage", "mq"]
 dependencies = [
     "httpx>=0.28.0",
 ]
@@ -14,6 +17,10 @@ dev = [
     "ruff>=0.8.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/HomeCloudLab/homecloud-sdk"
+Documentation = "https://docs.holab.abrdns.com/sdk/"
+
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"
@@ -21,6 +28,10 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["homecloud_core*", "homecloud_sdk*"]
+
+[tool.setuptools.package-data]
+homecloud_core = ["py.typed"]
+homecloud_sdk = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

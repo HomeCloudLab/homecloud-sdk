@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from homecloud_core.config import homecloud_dir
+from homecloud_core.env import env_session_file
 
 
 def session_path() -> Path:
-    override = os.environ.get("HOMECLOUD_SESSION_FILE")
+    override = env_session_file()
     if override:
         return Path(override).expanduser()
     return homecloud_dir() / "session"
