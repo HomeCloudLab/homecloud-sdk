@@ -13,6 +13,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Must match the GitHub Environment name exactly (case-sensitive).
     environment: pypi
     steps:
       - uses: actions/checkout@v4
@@ -26,10 +27,6 @@ jobs:
           pip install -U build
           python -m build
 
-      # Trusted Publishing (OIDC) — configure project on pypi.org → Publishing → GitHub.
-      # Or set repo secret PYPI_API_TOKEN (pypi-… API token).
+      # Trusted Publishing only (OIDC) — no PYPI_API_TOKEN needed.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-        # When using Trusted Publishing only, remove the password line above.
