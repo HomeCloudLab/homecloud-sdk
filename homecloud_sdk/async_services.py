@@ -281,6 +281,54 @@ class AsyncSoAPI:
     async def object_metadata(self, bucket_name: str, object_key: str) -> dict[str, Any]:
         return await self.head_object(bucket_name, object_key)
 
+    async def get_object_uri(self, bucket_name: str, object_key: str) -> dict[str, Any]:
+        """Return canonical object URIs (Access Key data plane)."""
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        key = object_key.lstrip("/")
+        sign_path, url_path = so_object_paths(account_id, bucket_name, key)
+        raw = await self._ctx.transport.data_plane_request(
+            "so",
+            "GET",
+            f"{sign_path}/uri",
+            account_id,
+            url_path=f"{url_path}/uri",
+        )
+        if not isinstance(raw, dict):
+            raise HomeCloudError("Invalid URI response")
+        return {
+            "so_uri": str(raw.get("so_uri") or f"so://{bucket_name}/{key}"),
+            "https_url": str(raw.get("https_url") or ""),
+            "https_requires_public": bool(raw.get("https_requires_public", True)),
+        }
+
+    async def generate_presigned_url(
+        self,
+        bucket_name: str,
+        object_key: str,
+        *,
+        expires: int = 3600,
+    ) -> dict[str, Any]:
+        """Generate a time-limited GET URL for an object (Access Key data plane)."""
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        key = object_key.lstrip("/")
+        sign_path, url_path = so_object_paths(account_id, bucket_name, key)
+        raw = await self._ctx.transport.data_plane_request(
+            "so",
+            "GET",
+            f"{sign_path}/presigned",
+            account_id,
+            url_path=f"{url_path}/presigned",
+            params={"expires": expires},
+        )
+        if not isinstance(raw, dict) or not raw.get("url"):
+            raise HomeCloudError("Invalid presigned URL response")
+        return {
+            "url": str(raw["url"]),
+            "expires_in_seconds": int(raw.get("expires_in_seconds") or expires),
+        }
+
     async def _remote_objects_for_sync(
         self,
         bucket_name: str,

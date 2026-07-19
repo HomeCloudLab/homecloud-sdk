@@ -77,6 +77,8 @@ PyPI publish is wired via `.github/workflows/publish-pypi.yml` (tag `v*` + Trust
 |-----|------|-------|
 | `so.upload` / `download` / `sync_*` / `list_objects` / `delete` | Access Key | Primary SDK path |
 | `so.head_object` (`object_metadata`) | Access Key | Metadata only — no object body (AWS HeadObject) |
+| `so.get_object_uri` | Access Key | `so://` + public HTTPS URL |
+| `so.generate_presigned_url` | Access Key | Time-limited GET URL |
 | `mq.send` / `receive` | Access Key | Primary SDK path |
 | `account_id()` | Access Key whoami | No JWT |
 | `so.list_buckets` / `create_bucket` | Console JWT | Management helper |
