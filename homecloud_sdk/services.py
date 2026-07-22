@@ -608,3 +608,67 @@ class SecretsAPI:
         account_id = self._ctx.account_id()
         data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/secrets")
         return data.get("items", [])
+
+
+class FunctionsAPI:
+    """HomeCloud Functions — management (JWT) + Function URL invoke (Access Key)."""
+
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+
+    def list(self) -> list[dict[str, Any]]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/functions")
+        return data.get("items", [])
+
+    def url(self, name: str) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/functions/{name}/url"
+        )
+
+    def enable_url(
+        self,
+        name: str,
+        *,
+        public: bool = False,
+        rate_limit_per_minute: int = 60,
+    ) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "POST",
+            f"accounts/{account_id}/functions/{name}/url/enable",
+            json={
+                "public_url_enabled": public,
+                "rate_limit_per_minute": rate_limit_per_minute,
+            },
+        )
+
+    def disable_url(self, name: str) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "POST", f"accounts/{account_id}/functions/{name}/url/disable"
+        )
+
+    def invoke(self, name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Data plane Function URL invoke — Access Key HMAC (not console JWT)."""
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.function_url_request(
+            name,
+            account_id,
+            json=payload or {},
+        )
+
+    def logs(self, name: str) -> list[dict[str, Any]]:
+        """List recent invocations (management plane)."""
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        data = self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/functions/{name}/invocations"
+        )
+        return data.get("items", [])

@@ -604,3 +604,38 @@ class AsyncSecretsAPI:
             "GET", f"accounts/{account_id}/secrets"
         )
         return data.get("items", [])
+
+
+class AsyncFunctionsAPI:
+    def __init__(self, ctx: AsyncCoreContext) -> None:
+        self._ctx = ctx
+
+    async def list(self) -> list[dict[str, Any]]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        data = await self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/functions"
+        )
+        return data.get("items", [])
+
+    async def url(self, name: str) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        return await self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/functions/{name}/url"
+        )
+
+    async def invoke(self, name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        return await self._ctx.transport.function_url_request(
+            name, account_id, json=payload or {}
+        )
+
+    async def logs(self, name: str) -> list[dict[str, Any]]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        data = await self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/functions/{name}/invocations"
+        )
+        return data.get("items", [])

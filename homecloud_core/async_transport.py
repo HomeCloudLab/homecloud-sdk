@@ -231,6 +231,28 @@ class AsyncTransport:
             files=files,
         )
 
+    async def function_url_request(
+        self,
+        function_name: str,
+        account_id: str,
+        *,
+        json: Any | None = None,
+    ) -> Any:
+        from homecloud_core.defaults import function_url
+
+        require_access_key(self.access_key_id, self.secret_access_key)
+        assert self.access_key_id and self.secret_access_key
+        path = "/"
+        headers = sign_request_headers(
+            access_key_id=self.access_key_id,
+            secret=self.secret_access_key,
+            method="POST",
+            path=path,
+            account_id=account_id,
+        )
+        url = function_url(function_name, self.apex).rstrip("/") + "/"
+        return await self._request("POST", url, headers=headers, json=json or {})
+
     async def _request(
         self,
         method: str,

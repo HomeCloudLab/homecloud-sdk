@@ -37,3 +37,9 @@ def so_url(apex: str | None = None) -> str:
 def secrets_url(apex: str | None = None) -> str:
     host = apex or platform_apex()
     return f"https://secrets.{host}"
+
+
+def function_url(name: str, apex: str | None = None) -> str:
+    """Data-plane Function URL: https://{name}.func.{apex}."""
+    host = apex or platform_apex()
+    return f"https://{name.strip().lower()}.func.{host}"

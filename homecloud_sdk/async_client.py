@@ -10,6 +10,7 @@ from homecloud_core.env import env_access_key_id, env_account_id, env_apex, env_
 from homecloud_sdk.async_services import (
     AsyncAccountsAPI,
     AsyncAppsAPI,
+    AsyncFunctionsAPI,
     AsyncMqAPI,
     AsyncQueuesAPI,
     AsyncSecretsAPI,
@@ -115,6 +116,10 @@ class AsyncHomeCloudClient:
     @property
     def secrets(self) -> AsyncSecretsAPI:
         return AsyncSecretsAPI(self._ctx)
+
+    @property
+    def functions(self) -> AsyncFunctionsAPI:
+        return AsyncFunctionsAPI(self._ctx)
 
     async def login(self, username: str, password: str, *, mfa_code: str | None = None) -> None:
         await self._ctx.login(username, password, mfa_code=mfa_code)
