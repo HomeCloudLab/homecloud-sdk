@@ -84,6 +84,43 @@ class AsyncTransport:
         url = console_request_url(self.apex, path)
         return await self._request(method, url, headers=headers, json=json, params=params)
 
+    async def console_request_bytes(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        require_auth: bool = True,
+    ) -> bytes:
+        if require_auth and not self.access_token:
+            raise NotLoggedInError("Not logged in. Run: homecloud login")
+
+        headers: dict[str, str] = {}
+        if require_auth and self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+
+        url = console_request_url(self.apex, path)
+        last_error: HomeCloudError | None = None
+        client = await self._http()
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = await client.request(method, url, headers=headers, params=params)
+            except httpx.HTTPError as exc:
+                if attempt == MAX_RETRIES:
+                    raise HomeCloudError(f"Request failed: {exc}") from exc
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            if response.status_code not in RETRY_STATUS or attempt == MAX_RETRIES:
+                if response.is_success:
+                    return response.content
+                raise error_from_failed_response(response)
+            last_error = HomeCloudError(
+                f"Request failed ({response.status_code})",
+                status_code=response.status_code,
+            )
+            await asyncio.sleep(0.5 * (attempt + 1))
+        raise last_error or HomeCloudError("Request failed")
+
     async def data_plane_request_bytes(
         self,
         plane: Plane,

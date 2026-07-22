@@ -610,6 +610,70 @@ class SecretsAPI:
         return data.get("items", [])
 
 
+class MailAPI:
+    """HomeCloud Mail — management plane (console JWT). Read messages, HTML, attachments."""
+
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+
+    def list_mailboxes(self) -> list[dict[str, Any]]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/mail/mailboxes")
+        return data.get("items", [])
+
+    def list_messages(
+        self,
+        *,
+        mailbox_id: str | None = None,
+        folder: str | None = None,
+        direction: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """List message metadata. Returns ``{items, next_cursor, has_more}``."""
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        params: dict[str, Any] = {"limit": limit}
+        if mailbox_id:
+            params["mailbox_id"] = mailbox_id
+        if folder:
+            params["folder"] = folder
+        if direction:
+            params["direction"] = direction
+        if status:
+            params["status"] = status
+        if search:
+            params["search"] = search
+        if cursor:
+            params["cursor"] = cursor
+        return self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/mail/messages",
+            params=params,
+        )
+
+    def get_message(self, message_id: str) -> dict[str, Any]:
+        """Full message detail including ``body_html``, ``body_text``, and ``attachments`` metadata."""
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/mail/messages/{message_id}",
+        )
+
+    def download_attachment(self, message_id: str, part_id: str) -> bytes:
+        """Download one MIME part (attachment) as raw bytes."""
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request_bytes(
+            "GET",
+            f"accounts/{account_id}/mail/messages/{message_id}/attachments/{part_id}",
+        )
+
+
 class FunctionsAPI:
     """HomeCloud Functions — management (JWT) + Function URL invoke (Access Key)."""
 

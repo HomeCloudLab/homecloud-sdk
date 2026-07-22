@@ -120,6 +120,44 @@ class Transport:
                 retry=retry,
             )
 
+    def console_request_bytes(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        require_auth: bool = True,
+    ) -> bytes:
+        """Raw console response body (attachments, binary downloads)."""
+        if require_auth and not self.access_token:
+            raise NotLoggedInError("Not logged in. Run: homecloud login")
+
+        headers: dict[str, str] = {}
+        if require_auth and self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+
+        url = urljoin(console_url(self.apex).rstrip("/") + "/", path.lstrip("/"))
+        last_error: HomeCloudError | None = None
+        client = self._http()
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = client.request(method, url, headers=headers, params=params)
+            except httpx.HTTPError as exc:
+                if attempt == MAX_RETRIES:
+                    raise HomeCloudError(f"Request failed: {exc}") from exc
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            if response.status_code not in RETRY_STATUS or attempt == MAX_RETRIES:
+                if response.is_success:
+                    return response.content
+                raise error_from_failed_response(response)
+            last_error = HomeCloudError(
+                f"Request failed ({response.status_code})",
+                status_code=response.status_code,
+            )
+            time.sleep(0.5 * (attempt + 1))
+        raise last_error or HomeCloudError("Request failed")
+
     def data_plane_request_bytes(
         self,
         plane: Plane,

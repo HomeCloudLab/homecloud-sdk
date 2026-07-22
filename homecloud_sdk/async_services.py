@@ -606,6 +606,67 @@ class AsyncSecretsAPI:
         return data.get("items", [])
 
 
+class AsyncMailAPI:
+    def __init__(self, ctx: AsyncCoreContext) -> None:
+        self._ctx = ctx
+
+    async def list_mailboxes(self) -> list[dict[str, Any]]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        data = await self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/mail/mailboxes"
+        )
+        return data.get("items", [])
+
+    async def list_messages(
+        self,
+        *,
+        mailbox_id: str | None = None,
+        folder: str | None = None,
+        direction: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        params: dict[str, Any] = {"limit": limit}
+        if mailbox_id:
+            params["mailbox_id"] = mailbox_id
+        if folder:
+            params["folder"] = folder
+        if direction:
+            params["direction"] = direction
+        if status:
+            params["status"] = status
+        if search:
+            params["search"] = search
+        if cursor:
+            params["cursor"] = cursor
+        return await self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/mail/messages",
+            params=params,
+        )
+
+    async def get_message(self, message_id: str) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        return await self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/mail/messages/{message_id}",
+        )
+
+    async def download_attachment(self, message_id: str, part_id: str) -> bytes:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        return await self._ctx.transport.console_request_bytes(
+            "GET",
+            f"accounts/{account_id}/mail/messages/{message_id}/attachments/{part_id}",
+        )
+
+
 class AsyncFunctionsAPI:
     def __init__(self, ctx: AsyncCoreContext) -> None:
         self._ctx = ctx

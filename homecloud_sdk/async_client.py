@@ -11,6 +11,7 @@ from homecloud_sdk.async_services import (
     AsyncAccountsAPI,
     AsyncAppsAPI,
     AsyncFunctionsAPI,
+    AsyncMailAPI,
     AsyncMqAPI,
     AsyncQueuesAPI,
     AsyncSecretsAPI,
@@ -116,6 +117,10 @@ class AsyncHomeCloudClient:
     @property
     def secrets(self) -> AsyncSecretsAPI:
         return AsyncSecretsAPI(self._ctx)
+
+    @property
+    def mail(self) -> AsyncMailAPI:
+        return AsyncMailAPI(self._ctx)
 
     @property
     def functions(self) -> AsyncFunctionsAPI:

@@ -7,7 +7,16 @@ from typing import Any
 
 from homecloud_core.context import CoreContext
 from homecloud_core.env import env_access_key_id, env_account_id, env_apex, env_profile, env_secret_access_key
-from homecloud_sdk.services import AccountsAPI, AppsAPI, FunctionsAPI, MqAPI, QueuesAPI, SecretsAPI, SoAPI
+from homecloud_sdk.services import (
+    AccountsAPI,
+    AppsAPI,
+    FunctionsAPI,
+    MailAPI,
+    MqAPI,
+    QueuesAPI,
+    SecretsAPI,
+    SoAPI,
+)
 
 
 class HomeCloudClient:
@@ -135,6 +144,10 @@ class HomeCloudClient:
     @property
     def secrets(self) -> SecretsAPI:
         return SecretsAPI(self._ctx)
+
+    @property
+    def mail(self) -> MailAPI:
+        return MailAPI(self._ctx)
 
     @property
     def functions(self) -> FunctionsAPI:
