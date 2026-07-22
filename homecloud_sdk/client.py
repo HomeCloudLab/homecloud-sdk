@@ -125,21 +125,25 @@ class HomeCloudClient:
         from urllib.parse import urlparse
 
         aid = account_id or os.environ.get("HC_ACCOUNT_ID") or env_account_id()
-        base = str(sts.get("base_url") or "").rstrip("/")
+        base = str(sts.get("base_url") or sts.get("mail_base_url") or "").rstrip("/")
         resource_type = str(sts.get("resource_type") or "").strip().lower()
         resolved_apex = apex or env_apex()
         console_base: str | None = None
         data_plane_bases: dict[str, str] = {}
         if base:
+            host = urlparse(base).hostname or ""
             if resource_type == "mail":
-                console_base = base
-                # https://console.host/api/v1 → host without console.
-                host = urlparse(base).hostname or ""
-                if host.startswith("console."):
-                    resolved_apex = resolved_apex or host[len("console.") :]
+                # Prefer mailapi data plane; fall back to console /api/v1 for old STS.
+                if host.startswith("mailapi.") or "/api/v1" not in base:
+                    data_plane_bases["mail"] = base
+                    if host.startswith("mailapi."):
+                        resolved_apex = resolved_apex or host[len("mailapi.") :]
+                else:
+                    console_base = base
+                    if host.startswith("console."):
+                        resolved_apex = resolved_apex or host[len("console.") :]
             elif resource_type in {"so", "mq", "secrets"}:
                 data_plane_bases[resource_type] = base
-                host = urlparse(base).hostname or ""
                 prefix = f"{resource_type}."
                 if host.startswith(prefix):
                     resolved_apex = resolved_apex or host[len(prefix) :]

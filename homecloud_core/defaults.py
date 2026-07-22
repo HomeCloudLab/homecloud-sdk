@@ -39,6 +39,12 @@ def secrets_url(apex: str | None = None) -> str:
     return f"https://secrets.{host}"
 
 
+def mail_api_url(apex: str | None = None) -> str:
+    """Mail data-plane SigV1 host (not SMTP mail.{domain})."""
+    host = apex or platform_apex()
+    return f"https://mailapi.{host}"
+
+
 def function_url(name: str, apex: str | None = None) -> str:
     """Data-plane Function URL: https://{name}.func.{apex}."""
     host = apex or platform_apex()

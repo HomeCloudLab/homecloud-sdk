@@ -8,9 +8,11 @@ from homecloud_sdk.services import MailAPI
 
 
 def test_mail_get_message_and_attachment_via_access_key() -> None:
+    """Compat path: AK without mail data-plane base still uses console_signed_request."""
     ctx = MagicMock()
     ctx.has_access_key = True
     ctx.account_id.return_value = "acc-1"
+    ctx.transport.data_plane_bases = {}
     ctx.transport.console_signed_request.return_value = {
         "id": "msg-1",
         "subject": "Hi",
@@ -35,6 +37,25 @@ def test_mail_get_message_and_attachment_via_access_key() -> None:
         "GET",
         "accounts/acc-1/mail/messages/msg-1/attachments/1",
         "acc-1",
+    )
+
+
+def test_mail_get_message_via_mailapi_data_plane() -> None:
+    ctx = MagicMock()
+    ctx.has_access_key = True
+    ctx.account_id.return_value = "acc-1"
+    ctx.transport.data_plane_bases = {"mail": "https://mailapi.example.com"}
+    ctx.transport.data_plane_request.return_value = {"id": "msg-1", "body_text": "hi"}
+
+    api = MailAPI(ctx)
+    detail = api.get_message("msg-1")
+    assert detail["body_text"] == "hi"
+    ctx.transport.data_plane_request.assert_called_with(
+        "mail",
+        "GET",
+        "/acc-1/messages/msg-1",
+        "acc-1",
+        params=None,
     )
 
 

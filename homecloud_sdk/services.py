@@ -611,28 +611,52 @@ class SecretsAPI:
 
 
 class MailAPI:
-    """HomeCloud Mail — JWT (interactive) or Access Key / mail STS (automation)."""
+    """HomeCloud Mail — JWT (console) or Access Key / mail STS via mailapi data plane."""
 
     def __init__(self, ctx: CoreContext) -> None:
         self._ctx = ctx
 
+    def _use_mail_data_plane(self) -> bool:
+        return bool(self._ctx.has_access_key and self._ctx.transport.data_plane_bases.get("mail"))
+
     def _mail_request(self, method: str, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        account_id = self._ctx.account_id()
+        if self._use_mail_data_plane():
+            # path like accounts/{id}/mail/mailboxes → /{id}/mailboxes
+            dp_path = _mail_console_path_to_data_plane(path, account_id)
+            return self._ctx.transport.data_plane_request(
+                "mail",
+                method,
+                dp_path,
+                account_id,
+                params=params,
+            )
         if self._ctx.has_access_key:
+            # Compat: old STS pointed at console /api/v1
             return self._ctx.transport.console_signed_request(
                 method,
                 path,
-                self._ctx.account_id(),
+                account_id,
                 params=params,
             )
         self._ctx.require_console_session()
         return self._ctx.transport.console_request(method, path, params=params)
 
     def _mail_request_bytes(self, method: str, path: str) -> bytes:
+        account_id = self._ctx.account_id()
+        if self._use_mail_data_plane():
+            dp_path = _mail_console_path_to_data_plane(path, account_id)
+            return self._ctx.transport.data_plane_request_bytes(
+                "mail",
+                method,
+                dp_path,
+                account_id,
+            )
         if self._ctx.has_access_key:
             return self._ctx.transport.console_signed_request_bytes(
                 method,
                 path,
-                self._ctx.account_id(),
+                account_id,
             )
         self._ctx.require_console_session()
         return self._ctx.transport.console_request_bytes(method, path)
@@ -689,6 +713,18 @@ class MailAPI:
             "GET",
             f"accounts/{account_id}/mail/messages/{message_id}/attachments/{part_id}",
         )
+
+
+def _mail_console_path_to_data_plane(path: str, account_id: str) -> str:
+    """Map ``accounts/{id}/mail/messages/...`` → ``/{id}/messages/...``."""
+    p = path.lstrip("/")
+    prefix = f"accounts/{account_id}/mail/"
+    if p.startswith(prefix):
+        return f"/{account_id}/{p[len(prefix):]}"
+    # already data-plane shaped
+    if p.startswith(f"{account_id}/"):
+        return f"/{p}"
+    raise HomeCloudError(f"Unexpected mail path for data plane: {path}")
 
 
 class FunctionsAPI:

@@ -7,11 +7,11 @@ from urllib.parse import urljoin
 
 import httpx
 
-from homecloud_core.defaults import mq_url, secrets_url, so_url
+from homecloud_core.defaults import mail_api_url, mq_url, secrets_url, so_url
 from homecloud_core.errors import HomeCloudError, error_from_status
 from homecloud_core.signing import sign_request_headers
 
-Plane = Literal["console", "mq", "so", "secrets"]
+Plane = Literal["console", "mq", "so", "secrets", "mail"]
 
 MAX_RETRIES = 2
 RETRY_STATUS = {502, 503, 504}
@@ -30,6 +30,7 @@ def data_plane_base_urls(apex: str) -> dict[str, str]:
         "mq": mq_url(apex),
         "so": so_url(apex),
         "secrets": secrets_url(apex),
+        "mail": mail_api_url(apex),
     }
 
 
