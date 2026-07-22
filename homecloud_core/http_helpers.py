@@ -63,6 +63,13 @@ def console_request_url(apex: str, path: str) -> str:
     return urljoin(console_url(apex).rstrip("/") + "/", path.lstrip("/"))
 
 
+def _response_url(response: httpx.Response) -> str:
+    try:
+        return str(response.request.url)
+    except RuntimeError:
+        return ""
+
+
 def _response_detail(response: httpx.Response) -> Any:
     try:
         body = response.json()
@@ -79,14 +86,14 @@ def parse_response(response: httpx.Response) -> Any:
             return response.json()
         except ValueError as exc:
             raise HomeCloudError(
-                f"Invalid JSON response ({response.status_code}) from {response.request.url}",
+                f"Invalid JSON response ({response.status_code}) from {_response_url(response) or 'unknown'}",
                 status_code=response.status_code,
             ) from exc
 
     raise error_from_status(
         response.status_code,
         detail=_response_detail(response),
-        url=str(response.request.url),
+        url=_response_url(response),
     )
 
 
@@ -94,5 +101,5 @@ def error_from_failed_response(response: httpx.Response) -> HomeCloudError:
     return error_from_status(
         response.status_code,
         detail=_response_detail(response),
-        url=str(response.request.url),
+        url=_response_url(response),
     )
