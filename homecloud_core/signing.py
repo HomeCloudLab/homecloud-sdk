@@ -33,6 +33,7 @@ def sign_request_headers(
     path: str,
     account_id: str,
     timestamp: datetime | None = None,
+    session_token: str | None = None,
 ) -> dict[str, str]:
     ts = (timestamp or datetime.now(timezone.utc)).replace(microsecond=0)
     ts_str = ts.isoformat().replace("+00:00", "Z")
@@ -43,8 +44,12 @@ def sign_request_headers(
         account_id=account_id,
     )
     signature = compute_signature(secret=secret, string_to_sign=string_to_sign)
-    return {
+    headers = {
         "X-Homecloud-Access-Key-Id": access_key_id,
         "X-Homecloud-Date": ts_str,
         "X-Homecloud-Signature": signature,
     }
+    if session_token:
+        headers["X-Homecloud-Session-Token"] = session_token
+    return headers
+

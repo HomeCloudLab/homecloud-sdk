@@ -43,17 +43,20 @@ def signed_data_plane_url(
     path: str,
     account_id: str,
     url_path: str | None = None,
+    session_token: str | None = None,
+    base_url_override: str | None = None,
 ) -> tuple[str, dict[str, str]]:
     require_access_key(access_key_id, secret_access_key)
-    base = data_plane_base_urls(apex)[plane]
+    base = (base_url_override or data_plane_base_urls(apex)[plane]).rstrip("/")
     headers = sign_request_headers(
         access_key_id=access_key_id,
         secret=secret_access_key,
         method=method,
         path=path,
         account_id=account_id,
+        session_token=session_token,
     )
-    url = f"{base.rstrip('/')}{url_path or path}"
+    url = f"{base}{url_path or path}"
     return url, headers
 
 

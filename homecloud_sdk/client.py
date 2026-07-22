@@ -7,6 +7,7 @@ from typing import Any
 
 from homecloud_core.context import CoreContext
 from homecloud_core.env import env_access_key_id, env_account_id, env_apex, env_profile, env_secret_access_key
+from homecloud_core.errors import HomeCloudError
 from homecloud_sdk.services import (
     AccountsAPI,
     AppsAPI,
@@ -55,6 +56,9 @@ class HomeCloudClient:
         interactive_mfa: bool = False,
         mfa_prompt: Callable[[str], str] | None = None,
         mfa_choose_method: Callable[[list[str], list[dict] | None], str] | None = None,
+        session_token: str | None = None,
+        data_plane_bases: dict[str, str] | None = None,
+        console_base_url: str | None = None,
     ) -> None:
         key_id = access_key_id or access_key
         secret = secret_access_key or secret_key
@@ -68,6 +72,9 @@ class HomeCloudClient:
             mfa_prompt=mfa_prompt,
             interactive_mfa=interactive_mfa,
             mfa_choose_method=mfa_choose_method,
+            session_token=session_token,
+            data_plane_bases=data_plane_bases,
+            console_base_url=console_base_url,
         )
 
     @classmethod
@@ -92,6 +99,7 @@ class HomeCloudClient:
         account_id: str | None = None,
         apex: str | None = None,
         profile: str | None = None,
+        session_token: str | None = None,
     ) -> HomeCloudClient:
         """Explicit Access Key client — preferred for CI and long-running services."""
         return cls(
@@ -100,8 +108,84 @@ class HomeCloudClient:
             secret_access_key=secret_access_key,
             account_id=account_id,
             apex=apex,
+            session_token=session_token,
             interactive_mfa=False,
         )
+
+    @classmethod
+    def from_sts(
+        cls,
+        sts: dict[str, Any],
+        *,
+        account_id: str | None = None,
+        apex: str | None = None,
+    ) -> HomeCloudClient:
+        """Build from a function STS entry (``context["sts"][binding]`` / ``HC_STS_JSON``)."""
+        import os
+        from urllib.parse import urlparse
+
+        aid = account_id or os.environ.get("HC_ACCOUNT_ID") or env_account_id()
+        base = str(sts.get("base_url") or "").rstrip("/")
+        resource_type = str(sts.get("resource_type") or "").strip().lower()
+        resolved_apex = apex or env_apex()
+        console_base: str | None = None
+        data_plane_bases: dict[str, str] = {}
+        if base:
+            if resource_type == "mail":
+                console_base = base
+                # https://console.host/api/v1 → host without console.
+                host = urlparse(base).hostname or ""
+                if host.startswith("console."):
+                    resolved_apex = resolved_apex or host[len("console.") :]
+            elif resource_type in {"so", "mq", "secrets"}:
+                data_plane_bases[resource_type] = base
+                host = urlparse(base).hostname or ""
+                prefix = f"{resource_type}."
+                if host.startswith(prefix):
+                    resolved_apex = resolved_apex or host[len(prefix) :]
+        if not resolved_apex:
+            from homecloud_core.defaults import DEFAULT_APEX
+
+            resolved_apex = DEFAULT_APEX
+        return cls(
+            access_key_id=str(sts["access_key_id"]),
+            secret_access_key=str(sts["secret_access_key"]),
+            account_id=aid,
+            apex=resolved_apex,
+            session_token=str(sts["session_token"]) if sts.get("session_token") else None,
+            data_plane_bases=data_plane_bases or None,
+            console_base_url=console_base,
+            interactive_mfa=False,
+        )
+
+    @classmethod
+    def from_function_context(
+        cls,
+        context: dict[str, Any] | None,
+        *,
+        binding: str,
+    ) -> HomeCloudClient:
+        """Preferred in function handlers: STS from Bindings via ``context["sts"]``."""
+        import json
+        import os
+
+        ctx = context or {}
+        sts_map = dict(ctx.get("sts") or {})
+        if not sts_map:
+            raw = os.environ.get("HC_STS_JSON")
+            if raw:
+                try:
+                    sts_map = json.loads(raw)
+                except Exception:
+                    sts_map = {}
+        entry = sts_map.get(binding)
+        if not entry or not isinstance(entry, dict):
+            raise HomeCloudError(
+                f"Missing STS for binding '{binding}'. "
+                "Set Bindings + execution_role on the function (no manual Access Key ENV needed)."
+            )
+        account_id = str(ctx.get("account_id") or os.environ.get("HC_ACCOUNT_ID") or "") or None
+        return cls.from_sts(entry, account_id=account_id)
 
     @classmethod
     def from_profile(cls, profile: str, **kwargs: Any) -> HomeCloudClient:

@@ -52,6 +52,9 @@ class CoreContext:
         mfa_prompt: Callable[[str], str] | None = None,
         interactive_mfa: bool = False,
         mfa_choose_method: Callable[[list[str], list[dict] | None], str] | None = None,
+        session_token: str | None = None,
+        data_plane_bases: dict[str, str] | None = None,
+        console_base_url: str | None = None,
     ) -> None:
         explicit = profile_name or env_profile()
         try:
@@ -97,6 +100,9 @@ class CoreContext:
             access_token=self._session.access_token,
             # MFA only when interactive CLI/tools opt in — never on default SDK path.
             mfa_resolver=self._mfa_resolver if interactive_mfa or mfa_code else None,
+            session_token=session_token,
+            data_plane_bases=data_plane_bases,
+            console_base_url=console_base_url,
         )
 
     def _apply_env_overrides(self) -> None:

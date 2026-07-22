@@ -611,15 +611,35 @@ class SecretsAPI:
 
 
 class MailAPI:
-    """HomeCloud Mail — management plane (console JWT). Read messages, HTML, attachments."""
+    """HomeCloud Mail — JWT (interactive) or Access Key / mail STS (automation)."""
 
     def __init__(self, ctx: CoreContext) -> None:
         self._ctx = ctx
 
-    def list_mailboxes(self) -> list[dict[str, Any]]:
+    def _mail_request(self, method: str, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        if self._ctx.has_access_key:
+            return self._ctx.transport.console_signed_request(
+                method,
+                path,
+                self._ctx.account_id(),
+                params=params,
+            )
         self._ctx.require_console_session()
+        return self._ctx.transport.console_request(method, path, params=params)
+
+    def _mail_request_bytes(self, method: str, path: str) -> bytes:
+        if self._ctx.has_access_key:
+            return self._ctx.transport.console_signed_request_bytes(
+                method,
+                path,
+                self._ctx.account_id(),
+            )
+        self._ctx.require_console_session()
+        return self._ctx.transport.console_request_bytes(method, path)
+
+    def list_mailboxes(self) -> list[dict[str, Any]]:
         account_id = self._ctx.account_id()
-        data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/mail/mailboxes")
+        data = self._mail_request("GET", f"accounts/{account_id}/mail/mailboxes")
         return data.get("items", [])
 
     def list_messages(
@@ -634,7 +654,6 @@ class MailAPI:
         cursor: str | None = None,
     ) -> dict[str, Any]:
         """List message metadata. Returns ``{items, next_cursor, has_more}``."""
-        self._ctx.require_console_session()
         account_id = self._ctx.account_id()
         params: dict[str, Any] = {"limit": limit}
         if mailbox_id:
@@ -649,7 +668,7 @@ class MailAPI:
             params["search"] = search
         if cursor:
             params["cursor"] = cursor
-        return self._ctx.transport.console_request(
+        return self._mail_request(
             "GET",
             f"accounts/{account_id}/mail/messages",
             params=params,
@@ -657,18 +676,16 @@ class MailAPI:
 
     def get_message(self, message_id: str) -> dict[str, Any]:
         """Full message detail including ``body_html``, ``body_text``, and ``attachments`` metadata."""
-        self._ctx.require_console_session()
         account_id = self._ctx.account_id()
-        return self._ctx.transport.console_request(
+        return self._mail_request(
             "GET",
             f"accounts/{account_id}/mail/messages/{message_id}",
         )
 
     def download_attachment(self, message_id: str, part_id: str) -> bytes:
         """Download one MIME part (attachment) as raw bytes."""
-        self._ctx.require_console_session()
         account_id = self._ctx.account_id()
-        return self._ctx.transport.console_request_bytes(
+        return self._mail_request_bytes(
             "GET",
             f"accounts/{account_id}/mail/messages/{message_id}/attachments/{part_id}",
         )
@@ -736,3 +753,12 @@ class FunctionsAPI:
             "GET", f"accounts/{account_id}/functions/{name}/invocations"
         )
         return data.get("items", [])
+
+    def get_invocation(self, name: str, invocation_id: str) -> dict[str, Any]:
+        """Full invocation detail including logs (management plane)."""
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/functions/{name}/invocations/{invocation_id}",
+        )

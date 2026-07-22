@@ -38,11 +38,17 @@ class Transport:
         access_token: str | None,
         timeout: float = 30.0,
         mfa_resolver: Any | None = None,
+        session_token: str | None = None,
+        data_plane_bases: dict[str, str] | None = None,
+        console_base_url: str | None = None,
     ) -> None:
         self.apex = apex
         self.access_key_id = access_key_id
         self.secret_access_key = secret_access_key
         self.access_token = access_token
+        self.session_token = session_token
+        self.data_plane_bases = dict(data_plane_bases or {})
+        self.console_base_url = console_base_url
         self.timeout = timeout
         self._mfa_resolver = mfa_resolver
         self._http_client: httpx.Client | None = None
@@ -158,6 +164,78 @@ class Transport:
             time.sleep(0.5 * (attempt + 1))
         raise last_error or HomeCloudError("Request failed")
 
+    def _console_api_base(self) -> str:
+        if self.console_base_url:
+            return self.console_base_url.rstrip("/")
+        return console_url(self.apex).rstrip("/")
+
+    def console_signed_request(
+        self,
+        method: str,
+        path: str,
+        account_id: str,
+        *,
+        json: Any | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Console API with Access Key SigV1 (optional STS session token) — mail automation."""
+        require_access_key(self.access_key_id, self.secret_access_key)
+        assert self.access_key_id and self.secret_access_key
+        rel = path.lstrip("/")
+        sign_path = f"/api/v1/{rel}"
+        headers = sign_request_headers(
+            access_key_id=self.access_key_id,
+            secret=self.secret_access_key,
+            method=method,
+            path=sign_path,
+            account_id=account_id,
+            session_token=self.session_token,
+        )
+        url = urljoin(self._console_api_base() + "/", rel)
+        return self._request(method, url, headers=headers, json=json, params=params)
+
+    def console_signed_request_bytes(
+        self,
+        method: str,
+        path: str,
+        account_id: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> bytes:
+        require_access_key(self.access_key_id, self.secret_access_key)
+        assert self.access_key_id and self.secret_access_key
+        rel = path.lstrip("/")
+        sign_path = f"/api/v1/{rel}"
+        headers = sign_request_headers(
+            access_key_id=self.access_key_id,
+            secret=self.secret_access_key,
+            method=method,
+            path=sign_path,
+            account_id=account_id,
+            session_token=self.session_token,
+        )
+        url = urljoin(self._console_api_base() + "/", rel)
+        last_error: HomeCloudError | None = None
+        client = self._http()
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = client.request(method, url, headers=headers, params=params)
+            except httpx.HTTPError as exc:
+                if attempt == MAX_RETRIES:
+                    raise HomeCloudError(f"Request failed: {exc}") from exc
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            if response.status_code not in RETRY_STATUS or attempt == MAX_RETRIES:
+                if response.is_success:
+                    return response.content
+                raise error_from_failed_response(response)
+            last_error = HomeCloudError(
+                f"Request failed ({response.status_code})",
+                status_code=response.status_code,
+            )
+            time.sleep(0.5 * (attempt + 1))
+        raise last_error or HomeCloudError("Request failed")
+
     def data_plane_request_bytes(
         self,
         plane: Plane,
@@ -180,6 +258,8 @@ class Transport:
             path=path,
             account_id=account_id,
             url_path=url_path,
+            session_token=self.session_token,
+            base_url_override=self.data_plane_bases.get(plane),
         )
         last_error: HomeCloudError | None = None
         client = self._http()
@@ -227,6 +307,8 @@ class Transport:
             path=path,
             account_id=account_id,
             url_path=url_path,
+            session_token=self.session_token,
+            base_url_override=self.data_plane_bases.get(plane),
         )
         last_error: HomeCloudError | None = None
         client = self._http()
@@ -297,6 +379,8 @@ class Transport:
             path=path,
             account_id=account_id,
             url_path=url_path,
+            session_token=self.session_token,
+            base_url_override=self.data_plane_bases.get(plane),
         )
         return self._request(
             method,
