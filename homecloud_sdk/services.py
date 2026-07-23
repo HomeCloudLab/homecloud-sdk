@@ -11,6 +11,7 @@ from homecloud_core.context import CoreContext
 from homecloud_core.errors import HomeCloudError
 from homecloud_core.progress_reader import ProgressReader
 from homecloud_core.so_paths import so_object_paths, sync_relative_local_path
+from homecloud_sdk.mq_helpers import build_mq_batch_entries
 from homecloud_sdk.so_parallel import DEFAULT_SO_WORKERS, run_parallel
 
 
@@ -46,13 +47,28 @@ class MqAPI:
     def send(
         self,
         queue_name: str,
-        body: dict[str, Any] | str,
+        body: dict[str, Any] | str | list[Any],
         *,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Data plane — Access Key only (no MFA / JWT)."""
+        """Data plane — Access Key only (no MFA / JWT).
+
+        ``body`` may be a single message (dict/str) or a list of up to 10 messages
+        for batch send (``POST .../messages/batch``).
+        """
         self._ctx.require_access_key()
         account_id = self._ctx.account_id()
+        if isinstance(body, list):
+            if headers is not None:
+                raise HomeCloudError("headers= is only supported for single mq.send, not batch")
+            path = f"/{account_id}/{queue_name}/messages/batch"
+            return self._ctx.transport.data_plane_request(
+                "mq",
+                "POST",
+                path,
+                account_id,
+                json={"entries": build_mq_batch_entries(body)},
+            )
         path = f"/{account_id}/{queue_name}/messages"
         body_str = body if isinstance(body, str) else json.dumps(body)
         payload: dict[str, Any] = {"body": body_str}

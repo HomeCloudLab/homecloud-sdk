@@ -31,6 +31,7 @@ client = HomeCloud()
 # Data plane — Access Key only, no login
 client.so.upload("docs", "./file.txt", key="a.txt")
 client.mq.send("orders", {"id": 1})
+client.mq.send("orders", [{"id": 1}, {"id": 2}])  # batch (1–10)
 
 # Interactive helpers only (CLI/tools) — may involve MFA
 # client.login("alice", "…")
@@ -132,7 +133,7 @@ git tag v0.5.0 && git push origin v0.5.0
 | `so.head_object` (`object_metadata`) | Access Key | Metadata only — no object body (AWS HeadObject) |
 | `so.get_object_uri` | Access Key | `so://` + public HTTPS URL |
 | `so.generate_presigned_url` | Access Key | Time-limited GET URL |
-| `mq.send` / `receive` | Access Key | Primary SDK path |
+| `mq.send` / `receive` | Access Key | Single or list body (batch 1–10) |
 | `account_id()` | Access Key whoami | No JWT |
 | `so.list_buckets` / `create_bucket` | Console JWT | Management helper |
 | `queues.list` / `apps.list` / `accounts.*` | Console JWT | Management helper |
