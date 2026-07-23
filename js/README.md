@@ -2,6 +2,10 @@
 
 Part of the **homecloud-sdk** monorepo — Python at repo root; Node in `js/`.
 
+**Expectation:** Node supports the **same product surface** as Python (`homecloud-sdk`), released under the **same** `v*` version. See [PARITY.md](./PARITY.md) for the checklist (what is shipped vs still TODO).
+
+Today’s npm package is an **MVP** (Functions / STS-first). Missing APIs are gaps to close, not “out of scope.”
+
 ## Install
 
 ```bash
@@ -18,7 +22,7 @@ From a local checkout (lab / layers):
 }
 ```
 
-## Usage
+## Usage (MVP — STS + SO)
 
 ```js
 const { HomeCloud } = require("@homecloud-platform/sdk");

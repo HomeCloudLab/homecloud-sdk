@@ -2,6 +2,8 @@
 
 Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud-platform/sdk`).
 
+**Parity goal:** both languages expose the same HomeCloud capabilities and ship on the same `v*` tag. Track gaps in [`js/PARITY.md`](./js/PARITY.md). Node is MVP today (STS / Functions-first); full surface is the committed target.
+
 ## Auth model (cloud-style)
 
 | Who | How | MFA |
