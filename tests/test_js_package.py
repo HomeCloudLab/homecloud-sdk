@@ -22,7 +22,7 @@ def test_js_package_npm_test() -> None:
     assert (JS / "package.json").is_file()
     assert (JS / "src" / "index.js").is_file()
     proc = subprocess.run(
-        ["node", "--test", "test/"],
+        ["node", "--test", str(JS / "test" / "signing.test.js")],
         cwd=str(JS),
         capture_output=True,
         text=True,

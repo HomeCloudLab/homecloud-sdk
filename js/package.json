@@ -26,6 +26,6 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test ./test/signing.test.js"
   }
 }
