@@ -6,9 +6,13 @@ const {
   signRequestHeaders,
   HomeCloud,
   HomeCloudError,
+  NotFoundError,
+  errorFromStatus,
   soUrl,
   mailApiUrl,
+  BadRequestError,
 } = require("../src/index.js");
+const { errorFromStatus: errFrom } = require("../src/errors.js");
 
 test("signRequestHeaders produces SigV1 headers", () => {
   const h = signRequestHeaders({
@@ -80,4 +84,49 @@ test("fromFunctionContext missing binding throws", () => {
 test("default endpoint helpers", () => {
   assert.equal(soUrl("holab.abrdns.com"), "https://so.holab.abrdns.com");
   assert.equal(mailApiUrl("holab.abrdns.com"), "https://mailapi.holab.abrdns.com");
+});
+
+test("typed errors map status codes", () => {
+  assert.ok(errFrom(400) instanceof BadRequestError);
+  assert.ok(errFrom(404) instanceof NotFoundError);
+  assert.equal(errFrom(404).statusCode, 404);
+});
+
+test("client exposes full service surface", () => {
+  const c = new HomeCloud({
+    accessKeyId: "k",
+    secretAccessKey: "s",
+    accountId: "a",
+  });
+  for (const name of [
+    "upload",
+    "download",
+    "delete",
+    "listObjects",
+    "listAllObjects",
+    "headObject",
+    "getObjectUri",
+    "generatePresignedUrl",
+    "syncLocalToBucket",
+    "syncBucketToLocal",
+    "deleteRecursive",
+    "listBuckets",
+  ]) {
+    assert.equal(typeof c.so[name], "function", name);
+  }
+  assert.equal(typeof c.mq.send, "function");
+  assert.equal(typeof c.mq.receive, "function");
+  assert.equal(typeof c.secrets.get, "function");
+  assert.equal(typeof c.secrets.list, "function");
+  assert.equal(typeof c.mail.listMailboxes, "function");
+  assert.equal(typeof c.mail.getMessage, "function");
+  assert.equal(typeof c.mail.downloadAttachment, "function");
+  assert.equal(typeof c.functions.invoke, "function");
+  assert.equal(typeof c.functions.list, "function");
+  assert.equal(typeof c.accounts.list, "function");
+  assert.equal(typeof c.apps.list, "function");
+  assert.equal(typeof c.queues.list, "function");
+  assert.equal(typeof c.login, "function");
+  assert.equal(typeof HomeCloud.fromEnv, "function");
+  assert.equal(typeof HomeCloud.fromProfile, "function");
 });
