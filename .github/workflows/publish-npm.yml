@@ -1,15 +1,16 @@
 name: Publish to npm
 
-# Node package only — does not collide with Python PyPI tags (v*).
-# Tag format: js-v0.1.0  →  publishes @homecloud-platform/sdk@0.1.0
+# Same release tag as Python: v0.5.0 → @homecloud-platform/sdk@0.5.0
+# Optional npm-only hotfix tag: js-v0.5.1 (does not publish PyPI)
 on:
   push:
     tags:
+      - "v*"
       - "js-v*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Package version to publish (e.g. 0.1.0). Leave empty to use js/package.json."
+        description: "Package version to publish (e.g. 0.5.0). Leave empty to use tag / package.json."
         required: false
         type: string
 
@@ -20,7 +21,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Must match GitHub Environment name and npm Trusted Publisher "Environment" field.
     environment: npm
     defaults:
       run:
@@ -33,7 +33,6 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      # Trusted Publishing needs a recent npm CLI (OIDC).
       - name: Upgrade npm
         run: npm install -g npm@latest
 
@@ -46,6 +45,8 @@ jobs:
             VER="${{ inputs.version }}"
           elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == js-v* ]]; then
             VER="${GITHUB_REF_NAME#js-v}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
           else
             VER="$(node -p "require('./js/package.json').version")"
           fi
@@ -62,8 +63,6 @@ jobs:
       - name: Test
         run: npm test
 
-      # OIDC Trusted Publishing — no NPM_TOKEN secret.
-      # First-time: publish once locally, then add Trusted Publisher on npmjs.com
-      # (GitHub org HomeCloudLab, repo homecloud-sdk, workflow publish-npm.yml, env npm).
+      # OIDC Trusted Publisher: workflow filename publish-npm.yml, environment npm
       - name: Publish
         run: npm publish --access public

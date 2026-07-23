@@ -32,36 +32,34 @@ exports.handler = async (event, context) => {
 };
 ```
 
-## Publish (GitHub Actions only)
+## Unified release (Python + Node)
 
-Tags for Node are **separate** from Python PyPI (`v*`):
-
-| Registry | Tag | Example |
-|----------|-----|---------|
-| PyPI `homecloud-sdk` | `v*` | `v0.4.9` |
-| npm `@homecloud-platform/sdk` | `js-v*` | `js-v0.1.0` |
+One tag publishes **both** registries with the **same** version:
 
 ```bash
-# bump version in js/package.json if you like, then:
-git tag js-v0.1.0
-git push origin js-v0.1.0
+./scripts/bump-version.sh 0.5.0
+git add pyproject.toml js/package.json
+git commit -m "Release 0.5.0"
+git push origin HEAD
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
-Workflow: `.github/workflows/publish-npm.yml` (Trusted Publishing / OIDC, environment `npm`).
+| Registry | Package | Trigger |
+|----------|---------|---------|
+| PyPI | `homecloud-sdk` | tag `v0.5.0` |
+| npm | `@homecloud-platform/sdk` | same tag `v0.5.0` |
+
+Workflows sync the version from the tag before publish (Trusted Publishing / OIDC).
+
+Optional npm-only hotfix (no PyPI): `js-v0.5.1`.
 
 ### One-time npm setup
 
-1. Create org **homecloud-platform** on npm (done).
-2. **First publish** (once, from a trusted machine after `npm login`):
-   ```bash
-   cd js
-   npm publish --access public
-   ```
-3. On https://www.npmjs.com/package/@homecloud-platform/sdk → **Settings → Trusted Publisher**:
-   - Provider: GitHub Actions
-   - Organization: `HomeCloudLab`
-   - Repository: `homecloud-sdk`
-   - Workflow filename: `publish-npm.yml` (filename only)
+1. Org **homecloud-platform** on npm.
+2. First publish once locally: `cd js && npm publish --access public`
+3. Package → **Trusted Publisher** → GitHub Actions:
+   - Org `HomeCloudLab`, repo `homecloud-sdk`
+   - Workflow: `publish-npm.yml`
    - Environment: `npm`
-4. In GitHub repo **Settings → Environments**, create environment **`npm`** (optional protection rules).
-5. Later releases: only push `js-v*` tags — no local publish, no npm token in secrets.
+4. GitHub → Environments → create **`npm`** (and **`pypi`** already for Python).

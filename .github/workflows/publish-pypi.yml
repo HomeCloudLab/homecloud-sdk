@@ -1,10 +1,16 @@
 name: Publish to PyPI
 
+# Same tag as npm: v0.5.0 → homecloud-sdk==0.5.0 on PyPI
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.5.0). Empty = pyproject.toml / tag."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -13,7 +19,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Must match the GitHub Environment name exactly (case-sensitive).
     environment: pypi
     steps:
       - uses: actions/checkout@v4
@@ -22,11 +27,48 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Resolve version from tag or input
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.version }}" ]]; then
+            VER="${{ inputs.version }}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          fi
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Invalid version: $VER" >&2
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Publishing homecloud-sdk==$VER"
+
+      - name: Sync pyproject.toml version
+        run: |
+          python - <<'PY'
+          import pathlib, re, os
+          ver = os.environ["VER"]
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          text2, n = re.subn(
+              r'(?m)^version\s*=\s*"[^"]*"',
+              f'version = "{ver}"',
+              text,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit("Could not update version in pyproject.toml")
+          path.write_text(text2, encoding="utf-8")
+          PY
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+
       - name: Build
         run: |
           pip install -U build
           python -m build
 
-      # Trusted Publishing only (OIDC) — no PYPI_API_TOKEN needed.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

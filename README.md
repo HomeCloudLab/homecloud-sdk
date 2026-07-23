@@ -48,7 +48,8 @@ await client.so.putJson("docs", "a.json", { ok: true });
 
 See [`js/README.md`](./js/README.md). Same STS / `mailapi` rewrite rules as Python ≥0.4.9.
 
-Publish Node via tag `js-v0.1.0` (workflow `publish-npm.yml`). Python stays on `v*` → PyPI.
+Publish Node via the **same** tag as Python: `v0.5.0` runs PyPI + npm together.
+See [`js/README.md`](./js/README.md) and `./scripts/bump-version.sh`.
 
 ### Async
 
@@ -113,6 +114,13 @@ pip install -e "../homecloud-sdk"
 ```
 
 PyPI publish is wired via `.github/workflows/publish-pypi.yml` (tag `v*` + Trusted Publishing).
+npm publish is wired via `.github/workflows/publish-npm.yml` (**same** `v*` tag → aligned versions).
+
+```bash
+./scripts/bump-version.sh 0.5.0
+# commit, push, then:
+git tag v0.5.0 && git push origin v0.5.0
+```
 
 ## Operations by plane
 
