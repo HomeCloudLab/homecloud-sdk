@@ -1,27 +1,27 @@
-# @homecloud/sdk (Node.js)
+# @homecloud-platform/sdk (Node.js)
 
-Part of the **homecloud-sdk** monorepo — Python lives at the repo root; Node lives in `js/`.
-
-Minimal HomeCloud Functions SDK for `nodejs20` (ADR-025e / ADR-033).
+Part of the **homecloud-sdk** monorepo — Python at repo root; Node in `js/`.
 
 ## Install
 
-From a function workspace / layer (path relative to your checkout):
+```bash
+npm install @homecloud-platform/sdk
+```
+
+From a local checkout (lab / layers):
 
 ```json
 {
   "dependencies": {
-    "@homecloud/sdk": "file:../../../homecloud-sdk/js"
+    "@homecloud-platform/sdk": "file:../../../homecloud-sdk/js"
   }
 }
 ```
 
-Or publish to npm later from this directory.
-
 ## Usage
 
 ```js
-const { HomeCloud } = require("@homecloud/sdk");
+const { HomeCloud } = require("@homecloud-platform/sdk");
 
 exports.handler = async (event, context) => {
   const client = HomeCloud.fromSts(context.sts.archive, {
@@ -32,11 +32,36 @@ exports.handler = async (event, context) => {
 };
 ```
 
-`fromSts` rewrites legacy console mail STS hosts to `mailapi.{apex}` (same as Python SDK ≥0.4.9).
+## Publish (GitHub Actions only)
 
-## Develop / test
+Tags for Node are **separate** from Python PyPI (`v*`):
+
+| Registry | Tag | Example |
+|----------|-----|---------|
+| PyPI `homecloud-sdk` | `v*` | `v0.4.9` |
+| npm `@homecloud-platform/sdk` | `js-v*` | `js-v0.1.0` |
 
 ```bash
-cd js
-npm test
+# bump version in js/package.json if you like, then:
+git tag js-v0.1.0
+git push origin js-v0.1.0
 ```
+
+Workflow: `.github/workflows/publish-npm.yml` (Trusted Publishing / OIDC, environment `npm`).
+
+### One-time npm setup
+
+1. Create org **homecloud-platform** on npm (done).
+2. **First publish** (once, from a trusted machine after `npm login`):
+   ```bash
+   cd js
+   npm publish --access public
+   ```
+3. On https://www.npmjs.com/package/@homecloud-platform/sdk → **Settings → Trusted Publisher**:
+   - Provider: GitHub Actions
+   - Organization: `HomeCloudLab`
+   - Repository: `homecloud-sdk`
+   - Workflow filename: `publish-npm.yml` (filename only)
+   - Environment: `npm`
+4. In GitHub repo **Settings → Environments**, create environment **`npm`** (optional protection rules).
+5. Later releases: only push `js-v*` tags — no local publish, no npm token in secrets.

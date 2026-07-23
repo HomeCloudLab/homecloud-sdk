@@ -1,6 +1,6 @@
 # HomeCloud SDK
 
-Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud/sdk`).
+Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud-platform/sdk`).
 
 ## Auth model (cloud-style)
 
@@ -35,10 +35,10 @@ client.mq.send("orders", {"id": 1})
 # client.login_browser()
 ```
 
-### Node.js (`@homecloud/sdk`)
+### Node.js (`@homecloud-platform/sdk`)
 
 ```js
-const { HomeCloud } = require("@homecloud/sdk");
+const { HomeCloud } = require("@homecloud-platform/sdk");
 
 const client = HomeCloud.fromSts(context.sts.archive, {
   accountId: context.account_id,
@@ -47,6 +47,8 @@ await client.so.putJson("docs", "a.json", { ok: true });
 ```
 
 See [`js/README.md`](./js/README.md). Same STS / `mailapi` rewrite rules as Python ≥0.4.9.
+
+Publish Node via tag `js-v0.1.0` (workflow `publish-npm.yml`). Python stays on `v*` → PyPI.
 
 ### Async
 
@@ -93,7 +95,7 @@ except HomeCloudError as exc:
 homecloud/          ← preferred public import (Python)
 homecloud_core/     ← auth, routing, signing, sessions, MFA helpers
 homecloud_sdk/      ← HomeCloud + AsyncHomeCloud
-js/                 ← @homecloud/sdk (Node.js 20+)
+js/                 ← @homecloud-platform/sdk (Node.js 20+)
 ```
 
 CLI (`homecloud-cli`) is a Typer/Rich wrapper; it opts into `interactive_mfa=True` on the sync client.
