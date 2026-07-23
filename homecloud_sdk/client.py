@@ -133,20 +133,31 @@ class HomeCloudClient:
         if base:
             host = urlparse(base).hostname or ""
             if resource_type == "mail":
-                # Prefer mailapi data plane; fall back to console /api/v1 for old STS.
-                if host.startswith("mailapi.") or "/api/v1" not in base:
+                # Automation always uses mailapi (ADR-033). Rewrite legacy console STS.
+                from homecloud_core.defaults import mail_api_url
+
+                if host.startswith("console.") or "/api/v1" in base:
+                    if host.startswith("console."):
+                        resolved_apex = resolved_apex or host[len("console.") :]
+                    if not resolved_apex:
+                        from homecloud_core.defaults import DEFAULT_APEX
+
+                        resolved_apex = DEFAULT_APEX
+                    data_plane_bases["mail"] = mail_api_url(resolved_apex).rstrip("/")
+                else:
                     data_plane_bases["mail"] = base
                     if host.startswith("mailapi."):
                         resolved_apex = resolved_apex or host[len("mailapi.") :]
-                else:
-                    console_base = base
-                    if host.startswith("console."):
-                        resolved_apex = resolved_apex or host[len("console.") :]
             elif resource_type in {"so", "mq", "secrets"}:
                 data_plane_bases[resource_type] = base
                 prefix = f"{resource_type}."
                 if host.startswith(prefix):
                     resolved_apex = resolved_apex or host[len(prefix) :]
+        elif resource_type == "mail":
+            from homecloud_core.defaults import DEFAULT_APEX, mail_api_url
+
+            resolved_apex = resolved_apex or DEFAULT_APEX
+            data_plane_bases["mail"] = mail_api_url(resolved_apex).rstrip("/")
         if not resolved_apex:
             from homecloud_core.defaults import DEFAULT_APEX
 
