@@ -1,0 +1,22 @@
+{
+  "name": "@homecloud/sdk",
+  "version": "0.1.0",
+  "description": "HomeCloud Functions SDK for Node.js (ADR-033 / ADR-025e)",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HomeCloudLab/homecloud-sdk.git",
+    "directory": "js"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

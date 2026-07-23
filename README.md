@@ -1,6 +1,6 @@
 # HomeCloud SDK
 
-Python SDK for HomeCloud (`pip install homecloud-sdk`).
+Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud/sdk`).
 
 ## Auth model (cloud-style)
 
@@ -34,6 +34,19 @@ client.mq.send("orders", {"id": 1})
 # client.login("alice", "…")
 # client.login_browser()
 ```
+
+### Node.js (`@homecloud/sdk`)
+
+```js
+const { HomeCloud } = require("@homecloud/sdk");
+
+const client = HomeCloud.fromSts(context.sts.archive, {
+  accountId: context.account_id,
+});
+await client.so.putJson("docs", "a.json", { ok: true });
+```
+
+See [`js/README.md`](./js/README.md). Same STS / `mailapi` rewrite rules as Python ≥0.4.9.
 
 ### Async
 
@@ -77,9 +90,10 @@ except HomeCloudError as exc:
 ## Architecture
 
 ```text
-homecloud/          ← preferred public import
+homecloud/          ← preferred public import (Python)
 homecloud_core/     ← auth, routing, signing, sessions, MFA helpers
 homecloud_sdk/      ← HomeCloud + AsyncHomeCloud
+js/                 ← @homecloud/sdk (Node.js 20+)
 ```
 
 CLI (`homecloud-cli`) is a Typer/Rich wrapper; it opts into `interactive_mfa=True` on the sync client.
@@ -141,6 +155,8 @@ Async mirrors the same surface on `AsyncHomeCloud` (`await client.so.…`).
 pip install -e ".[dev]"
 pytest tests/ -q
 pytest tests/test_live_integration.py -q   # needs Access Keys in ~/.homecloud
+
+cd js && npm test
 ```
 
 ### Service-account verification (pre-PyPI)
