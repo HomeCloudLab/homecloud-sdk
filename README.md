@@ -62,6 +62,7 @@ from homecloud import AsyncHomeCloud
 async with AsyncHomeCloud.from_env() as client:
     meta = await client.so.head_object("docs", "a.txt")
     await client.mq.send("orders", {"id": 1})
+    await client.mq.receive("orders", max_messages=10, delete=True)
 ```
 
 `from homecloud_sdk import …` still works (compatibility). Prefer `from homecloud import …`.
@@ -133,7 +134,7 @@ git tag v0.5.0 && git push origin v0.5.0
 | `so.head_object` (`object_metadata`) | Access Key | Metadata only — no object body (AWS HeadObject) |
 | `so.get_object_uri` | Access Key | `so://` + public HTTPS URL |
 | `so.generate_presigned_url` | Access Key | Time-limited GET URL |
-| `mq.send` / `receive` / `delete` / `purge` / DLQ | Access Key | Single or list body (batch 1–10); receive includes `created_at` |
+| `mq.send` / `receive` / `delete` / `purge` / DLQ | Access Key | `receive(delete=True)` fast ack; batch send via list |
 | `queues.list` / `queues.get` | Console JWT | `list(live=True)` for depth/inflight/DLQ |
 | `account_id()` | Access Key whoami | No JWT |
 | `so.list_buckets` / `create_bucket` | Console JWT | Management helper |

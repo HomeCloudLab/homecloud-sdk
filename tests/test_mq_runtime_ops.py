@@ -63,6 +63,46 @@ def test_sdk_mq_delete_and_purge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert calls[2] == {"method": "POST", "path": "/acc-1/demo-queue/dlq/purge"}
 
 
+def test_sdk_mq_receive_delete_param(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _write_creds(tmp_path)
+    monkeypatch.setenv("HOMECLOUD_CREDENTIALS_FILE", str(tmp_path / "credentials"))
+    monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
+
+    captured: dict[str, Any] = {}
+
+    class MockHttpClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def request(self, method: str, url: str, **kwargs):
+            request = httpx.Request(method, url)
+            captured["path"] = request.url.path
+            captured["params"] = kwargs.get("params")
+            return httpx.Response(
+                200,
+                json={
+                    "items": [{"sequence": 7, "body": "x", "status": "deleted"}],
+                    "total": 1,
+                },
+            )
+
+    monkeypatch.setattr("homecloud_core.transport.httpx.Client", MockHttpClient)
+    items = HomeCloudClient().mq.receive("demo-queue", max_messages=3, delete=True)
+    assert captured["path"] == "/acc-1/demo-queue/messages"
+    assert captured["params"] == {
+        "max_messages": 3,
+        "wait_seconds": 20,
+        "delete": "true",
+    }
+    assert items[0]["status"] == "deleted"
+
+
 def test_sdk_mq_receive_dlq(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _write_creds(tmp_path)
     monkeypatch.setenv("HOMECLOUD_CREDENTIALS_FILE", str(tmp_path / "credentials"))

@@ -115,16 +115,20 @@ class AsyncMqAPI:
         *,
         max_messages: int = 1,
         wait_seconds: int = 20,
+        delete: bool = False,
     ) -> list[dict[str, Any]]:
         self._ctx.require_access_key()
         account_id = await self._ctx.account_id()
         path = f"/{account_id}/{queue_name}/messages"
+        params: dict[str, Any] = {"max_messages": max_messages, "wait_seconds": wait_seconds}
+        if delete:
+            params["delete"] = "true"
         data = await self._ctx.transport.data_plane_request(
             "mq",
             "GET",
             path,
             account_id,
-            params={"max_messages": max_messages, "wait_seconds": wait_seconds},
+            params=params,
         )
         return data.get("items", [])
 
@@ -146,16 +150,20 @@ class AsyncMqAPI:
         *,
         max_messages: int = 1,
         wait_seconds: int = 20,
+        delete: bool = False,
     ) -> list[dict[str, Any]]:
         self._ctx.require_access_key()
         account_id = await self._ctx.account_id()
         path = f"/{account_id}/{queue_name}/dlq/messages"
+        params: dict[str, Any] = {"max_messages": max_messages, "wait_seconds": wait_seconds}
+        if delete:
+            params["delete"] = "true"
         data = await self._ctx.transport.data_plane_request(
             "mq",
             "GET",
             path,
             account_id,
-            params={"max_messages": max_messages, "wait_seconds": wait_seconds},
+            params=params,
         )
         return data.get("items", [])
 
