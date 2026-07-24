@@ -1,6 +1,6 @@
 {
   "name": "@homecloud-platform/sdk",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "HomeCloud Functions SDK for Node.js (ADR-033 / ADR-025e)",
   "main": "src/index.js",
   "types": "src/index.d.ts",

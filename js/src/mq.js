@@ -60,12 +60,12 @@ class MqAPI {
     return this._c.dataPlaneRequest("mq", "POST", reqPath, { json: payload });
   }
 
-  async receive(queueName, { maxMessages = 1, waitSeconds = 20, delete = false } = {}) {
+  async receive(queueName, { maxMessages = 1, waitSeconds = 20, delete: shouldDelete = false } = {}) {
     this._c.requireAccessKey();
     const accountId = this._c.accountId;
     const reqPath = `/${accountId}/${queueName}/messages`;
     const params = { max_messages: maxMessages, wait_seconds: waitSeconds };
-    if (delete) params.delete = "true";
+    if (shouldDelete) params.delete = "true";
     const data = await this._c.dataPlaneRequest("mq", "GET", reqPath, { params });
     return data.items || [];
   }
@@ -84,12 +84,12 @@ class MqAPI {
     await this._c.dataPlaneRequest("mq", "POST", reqPath);
   }
 
-  async receiveDlq(queueName, { maxMessages = 1, waitSeconds = 20, delete = false } = {}) {
+  async receiveDlq(queueName, { maxMessages = 1, waitSeconds = 20, delete: shouldDelete = false } = {}) {
     this._c.requireAccessKey();
     const accountId = this._c.accountId;
     const reqPath = `/${accountId}/${queueName}/dlq/messages`;
     const params = { max_messages: maxMessages, wait_seconds: waitSeconds };
-    if (delete) params.delete = "true";
+    if (shouldDelete) params.delete = "true";
     const data = await this._c.dataPlaneRequest("mq", "GET", reqPath, { params });
     return data.items || [];
   }
