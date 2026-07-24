@@ -55,13 +55,21 @@ class AsyncQueuesAPI:
     def __init__(self, ctx: AsyncCoreContext) -> None:
         self._ctx = ctx
 
-    async def list(self) -> list[dict[str, Any]]:
+    async def list(self, *, live: bool = False) -> list[dict[str, Any]]:
         self._ctx.require_console_session()
         account_id = await self._ctx.account_id()
+        params = {"live": "true"} if live else None
         data = await self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/queues"
+            "GET", f"accounts/{account_id}/queues", params=params
         )
         return data.get("items", [])
+
+    async def get(self, queue_name: str) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        return await self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/queues/{queue_name}"
+        )
 
 
 class AsyncMqAPI:
@@ -120,6 +128,48 @@ class AsyncMqAPI:
         )
         return data.get("items", [])
 
+    async def delete(self, queue_name: str, sequence: int) -> None:
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/messages/{sequence}"
+        await self._ctx.transport.data_plane_request("mq", "DELETE", path, account_id)
+
+    async def purge(self, queue_name: str) -> None:
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/purge"
+        await self._ctx.transport.data_plane_request("mq", "POST", path, account_id)
+
+    async def receive_dlq(
+        self,
+        queue_name: str,
+        *,
+        max_messages: int = 1,
+        wait_seconds: int = 20,
+    ) -> list[dict[str, Any]]:
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/dlq/messages"
+        data = await self._ctx.transport.data_plane_request(
+            "mq",
+            "GET",
+            path,
+            account_id,
+            params={"max_messages": max_messages, "wait_seconds": wait_seconds},
+        )
+        return data.get("items", [])
+
+    async def delete_dlq(self, queue_name: str, sequence: int) -> None:
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/dlq/messages/{sequence}"
+        await self._ctx.transport.data_plane_request("mq", "DELETE", path, account_id)
+
+    async def purge_dlq(self, queue_name: str) -> None:
+        self._ctx.require_access_key()
+        account_id = await self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/dlq/purge"
+        await self._ctx.transport.data_plane_request("mq", "POST", path, account_id)
 
 class AsyncAppsAPI:
     def __init__(self, ctx: AsyncCoreContext) -> None:

@@ -39,13 +39,22 @@ class QueuesAPI {
     this._c = client;
   }
 
-  async list() {
+  async list({ live = false } = {}) {
     this._c.requireConsole();
     const data = await this._c.consoleRequest(
       "GET",
-      `accounts/${this._c.accountId}/queues`
+      `accounts/${this._c.accountId}/queues`,
+      { params: live ? { live: "true" } : undefined }
     );
     return data.items || [];
+  }
+
+  async get(queueName) {
+    this._c.requireConsole();
+    return this._c.consoleRequest(
+      "GET",
+      `accounts/${this._c.accountId}/queues/${encodeURIComponent(queueName)}`
+    );
   }
 }
 

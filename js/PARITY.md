@@ -9,7 +9,7 @@
 | Auth (`fromSts`, `fromFunctionContext`, `fromEnv`/`fromProfile`, `fromCredentials`, login/loginBrowser) | yes |
 | Typed errors | yes |
 | SO data plane + console buckets + sync | yes |
-| MQ send/receive (+ batch send via list) | yes |
+| MQ send/receive/delete/purge/DLQ (+ batch send via list) | yes |
 | Secrets get (DP) + list (console) | yes |
 | Mail list/get/attachments | yes |
 | Functions / Apps / Accounts / Queues | yes |

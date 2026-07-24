@@ -116,6 +116,12 @@ test("client exposes full service surface", () => {
   }
   assert.equal(typeof c.mq.send, "function");
   assert.equal(typeof c.mq.receive, "function");
+  assert.equal(typeof c.mq.delete, "function");
+  assert.equal(typeof c.mq.purge, "function");
+  assert.equal(typeof c.mq.receiveDlq, "function");
+  assert.equal(typeof c.mq.deleteDlq, "function");
+  assert.equal(typeof c.mq.purgeDlq, "function");
+  assert.equal(typeof c.queues.get, "function");
   assert.equal(typeof c.secrets.get, "function");
   assert.equal(typeof c.secrets.list, "function");
   assert.equal(typeof c.mail.listMailboxes, "function");

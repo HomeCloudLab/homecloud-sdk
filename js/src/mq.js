@@ -69,6 +69,44 @@ class MqAPI {
     });
     return data.items || [];
   }
+
+  async delete(queueName, sequence) {
+    this._c.requireAccessKey();
+    const accountId = this._c.accountId;
+    const reqPath = `/${accountId}/${queueName}/messages/${sequence}`;
+    await this._c.dataPlaneRequest("mq", "DELETE", reqPath);
+  }
+
+  async purge(queueName) {
+    this._c.requireAccessKey();
+    const accountId = this._c.accountId;
+    const reqPath = `/${accountId}/${queueName}/purge`;
+    await this._c.dataPlaneRequest("mq", "POST", reqPath);
+  }
+
+  async receiveDlq(queueName, { maxMessages = 1, waitSeconds = 20 } = {}) {
+    this._c.requireAccessKey();
+    const accountId = this._c.accountId;
+    const reqPath = `/${accountId}/${queueName}/dlq/messages`;
+    const data = await this._c.dataPlaneRequest("mq", "GET", reqPath, {
+      params: { max_messages: maxMessages, wait_seconds: waitSeconds },
+    });
+    return data.items || [];
+  }
+
+  async deleteDlq(queueName, sequence) {
+    this._c.requireAccessKey();
+    const accountId = this._c.accountId;
+    const reqPath = `/${accountId}/${queueName}/dlq/messages/${sequence}`;
+    await this._c.dataPlaneRequest("mq", "DELETE", reqPath);
+  }
+
+  async purgeDlq(queueName) {
+    this._c.requireAccessKey();
+    const accountId = this._c.accountId;
+    const reqPath = `/${accountId}/${queueName}/dlq/purge`;
+    await this._c.dataPlaneRequest("mq", "POST", reqPath);
+  }
 }
 
 module.exports = { MqAPI, buildMqBatchEntries, MQ_BATCH_MAX };

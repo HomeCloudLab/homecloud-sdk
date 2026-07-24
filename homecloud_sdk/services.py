@@ -32,12 +32,23 @@ class QueuesAPI:
     def __init__(self, ctx: CoreContext) -> None:
         self._ctx = ctx
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, *, live: bool = False) -> list[dict[str, Any]]:
         """List queue definitions via Console API (JWT). Runtime send/receive: ``client.mq``."""
         self._ctx.require_console_session()
         account_id = self._ctx.account_id()
-        data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/queues")
+        params = {"live": "true"} if live else None
+        data = self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/queues", params=params
+        )
         return data.get("items", [])
+
+    def get(self, queue_name: str) -> dict[str, Any]:
+        """Queue detail with live stats (messages, inflight, DLQ) via Console API (JWT)."""
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/queues/{queue_name}"
+        )
 
 
 class MqAPI:
@@ -102,6 +113,53 @@ class MqAPI:
         )
         return data.get("items", [])
 
+    def delete(self, queue_name: str, sequence: int) -> None:
+        """Ack & delete a received message by stream sequence."""
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/messages/{sequence}"
+        self._ctx.transport.data_plane_request("mq", "DELETE", path, account_id)
+
+    def purge(self, queue_name: str) -> None:
+        """Purge all messages from the queue stream."""
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/purge"
+        self._ctx.transport.data_plane_request("mq", "POST", path, account_id)
+
+    def receive_dlq(
+        self,
+        queue_name: str,
+        *,
+        max_messages: int = 1,
+        wait_seconds: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Receive messages from the queue DLQ."""
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/dlq/messages"
+        data = self._ctx.transport.data_plane_request(
+            "mq",
+            "GET",
+            path,
+            account_id,
+            params={"max_messages": max_messages, "wait_seconds": wait_seconds},
+        )
+        return data.get("items", [])
+
+    def delete_dlq(self, queue_name: str, sequence: int) -> None:
+        """Delete a DLQ message by stream sequence."""
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/dlq/messages/{sequence}"
+        self._ctx.transport.data_plane_request("mq", "DELETE", path, account_id)
+
+    def purge_dlq(self, queue_name: str) -> None:
+        """Purge all messages from the queue DLQ."""
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        path = f"/{account_id}/{queue_name}/dlq/purge"
+        self._ctx.transport.data_plane_request("mq", "POST", path, account_id)
 
 class AppsAPI:
     def __init__(self, ctx: CoreContext) -> None:
