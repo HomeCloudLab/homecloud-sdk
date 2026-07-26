@@ -32,6 +32,11 @@ exports.handler = async (event, context) => {
     accountId: context.account_id,
   });
   await client.so.putJson("my-bucket", "proof/ok.json", { ok: true });
+  await client.so.upload("my-bucket", null, {
+    body: Buffer.from("..."),
+    key: "videos/clip.mp4",
+    contentType: "video/mp4",
+  });
   return { ok: true };
 };
 ```

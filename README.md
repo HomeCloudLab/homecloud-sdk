@@ -30,6 +30,12 @@ client = HomeCloud()
 
 # Data plane — Access Key only, no login
 client.so.upload("docs", "./file.txt", key="a.txt")
+client.so.upload(
+    "media",
+    body=video_bytes,
+    key="videos/clip.mp4",
+    content_type="video/mp4",
+)
 client.mq.send("orders", {"id": 1})
 client.mq.send("orders", [{"id": 1}, {"id": 2}])  # batch (1–10)
 

@@ -14,6 +14,11 @@ from homecloud_core.progress_reader import ProgressReader
 from homecloud_core.so_paths import so_object_paths, sync_relative_local_path
 from homecloud_sdk.mq_helpers import build_mq_batch_entries
 from homecloud_sdk.so_parallel import DEFAULT_SO_WORKERS
+from homecloud_sdk.services import (
+    UploadBody,
+    _as_binary_stream,
+    _resolve_upload_content_type,
+)
 
 
 async def _run_parallel_async(
@@ -262,28 +267,70 @@ class AsyncSoAPI:
     async def upload(
         self,
         bucket_name: str,
-        file_path: str,
+        file_path: str | Path | None = None,
         *,
+        body: UploadBody | None = None,
         key: str | None = None,
+        content_type: str | None = None,
         on_bytes: Callable[[int], None] | None = None,
     ) -> dict[str, Any]:
+        """Upload an object from a local path or in-memory body.
+
+        Data plane — Access Key only. See sync ``SoAPI.upload``.
+        """
         self._ctx.require_access_key()
-        path = Path(file_path)
+        if body is not None and file_path is not None:
+            raise HomeCloudError("Pass either file_path or body, not both")
+        if body is None and file_path is None:
+            raise HomeCloudError("file_path or body is required")
+        if body is not None and (not key or not str(key).strip()):
+            raise HomeCloudError("key is required when uploading body")
+
+        account_id = await self._ctx.account_id()
+        upload_path = f"/{account_id}/{bucket_name}/objects"
+
+        if body is not None:
+            object_key = str(key).strip().lstrip("/")
+            filename = Path(object_key).name or "object"
+            mime = _resolve_upload_content_type(
+                content_type, object_key=object_key, filename=filename
+            )
+            stream, owns = _as_binary_stream(body)
+            try:
+                upload_body = (
+                    ProgressReader(stream, on_bytes) if on_bytes is not None else stream
+                )
+                return await self._ctx.transport.data_plane_request(
+                    "so",
+                    "POST",
+                    upload_path,
+                    account_id,
+                    data={"key": object_key},
+                    files={"file": (filename, upload_body, mime)},
+                )
+            finally:
+                if owns:
+                    stream.close()
+
+        path = Path(file_path)  # type: ignore[arg-type]
         if not path.is_file():
             raise HomeCloudError(f"File not found: {file_path}")
 
         object_key = key or path.name
-        account_id = await self._ctx.account_id()
-        upload_path = f"/{account_id}/{bucket_name}/objects"
+        mime = _resolve_upload_content_type(
+            content_type, object_key=object_key, filename=path.name
+        )
         with path.open("rb") as handle:
-            body = ProgressReader(handle, on_bytes) if on_bytes is not None else handle
+            upload_body = (
+                ProgressReader(handle, on_bytes) if on_bytes is not None else handle
+            )
             return await self._ctx.transport.data_plane_request(
                 "so",
                 "POST",
                 upload_path,
                 account_id,
                 data={"key": object_key},
-                files={"file": (path.name, body, "application/octet-stream")},
+                files={"file": (path.name, upload_body, mime)},
             )
 
     async def delete(self, bucket_name: str, object_key: str) -> None:

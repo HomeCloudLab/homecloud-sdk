@@ -2,9 +2,37 @@
 
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 const { soObjectPaths } = require("./signing");
 const { HomeCloudError } = require("./errors");
+
+const MIME_BY_EXT = {
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".pdf": "application/pdf",
+  ".json": "application/json",
+  ".txt": "text/plain",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".xml": "application/xml",
+  ".csv": "text/csv",
+  ".zip": "application/zip",
+};
+
+function _guessContentType(name) {
+  const ext = path.extname(String(name || "")).toLowerCase();
+  return MIME_BY_EXT[ext] || null;
+}
 
 class SoAPI {
   constructor(client) {
@@ -58,34 +86,56 @@ class SoAPI {
     return items;
   }
 
-  async upload(bucketName, filePath, { key } = {}) {
+  async upload(bucketName, filePath, { key, body, contentType } = {}) {
     this._c.requireAccessKey();
-    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-      throw new HomeCloudError(`File not found: ${filePath}`);
+    const hasBody = body !== undefined && body !== null;
+    if (hasBody && filePath != null && filePath !== "") {
+      throw new HomeCloudError("Pass either filePath or body, not both");
     }
-    const objectKey = key || path.basename(filePath);
+    if (!hasBody && (filePath == null || filePath === "")) {
+      throw new HomeCloudError("filePath or body is required");
+    }
+    if (hasBody && (!key || !String(key).trim())) {
+      throw new HomeCloudError("key is required when uploading body");
+    }
+
+    let objectKey;
+    let filename;
+    let payload;
+
+    if (hasBody) {
+      objectKey = String(key).trim().replace(/^\/+/, "");
+      filename = path.basename(objectKey) || "object";
+      payload = body;
+    } else {
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        throw new HomeCloudError(`File not found: ${filePath}`);
+      }
+      objectKey = key || path.basename(filePath);
+      filename = path.basename(filePath);
+      payload = fs.readFileSync(filePath);
+    }
+
+    const mime =
+      contentType ||
+      _guessContentType(objectKey) ||
+      _guessContentType(filename) ||
+      "application/octet-stream";
     const accountId = this._c.accountId;
     const uploadPath = `/${accountId}/${bucketName}/objects`;
-    const blob = fs.readFileSync(filePath);
     const form = new FormData();
     form.append("key", objectKey);
-    form.append("file", new Blob([blob]), path.basename(filePath));
+    form.append("file", new Blob([payload], { type: mime }), filename);
     return this._c.dataPlaneRequest("so", "POST", uploadPath, { formData: form });
   }
 
   async putJson(bucketName, objectKey, value) {
-    const tmp = path.join(
-      os.tmpdir(),
-      `hc-sdk-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
-    );
-    fs.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf8");
-    try {
-      return await this.upload(bucketName, tmp, { key: objectKey });
-    } finally {
-      try {
-        fs.unlinkSync(tmp);
-      } catch (_) {}
-    }
+    const data = Buffer.from(JSON.stringify(value, null, 2), "utf8");
+    return this.upload(bucketName, null, {
+      key: objectKey,
+      body: data,
+      contentType: "application/json",
+    });
   }
 
   async delete(bucketName, objectKey) {
