@@ -136,9 +136,14 @@ class AsyncCoreContext:
         self._transport.access_token = token
         self._session = load_session().get(self.profile_name)
 
-    async def login(self, username: str, password: str, *, mfa_code: str | None = None) -> None:
-        """Console login without interactive MFA prompts (optional ``mfa_code``)."""
-        body: dict[str, Any] = {"username": username, "password": password}
+    async def login(
+        self, account: str, username: str, password: str, *, mfa_code: str | None = None
+    ) -> None:
+        """Console login without interactive MFA prompts (optional ``mfa_code``).
+
+        ``account`` is the account number or alias (Identity Reset Phase 1d).
+        """
+        body: dict[str, Any] = {"account": account, "username": username, "password": password}
         if mfa_code:
             body["mfa_code"] = mfa_code
 

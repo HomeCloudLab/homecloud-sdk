@@ -252,9 +252,14 @@ class HomeCloudClient:
     def functions(self) -> FunctionsAPI:
         return FunctionsAPI(self._ctx)
 
-    def login(self, username: str, password: str, *, mfa_code: str | None = None) -> None:
-        """Interactive console JWT login (CLI/tools). Not for unattended automation."""
-        self._ctx.login(username, password, mfa_code=mfa_code)
+    def login(
+        self, account: str, username: str, password: str, *, mfa_code: str | None = None
+    ) -> None:
+        """Interactive console JWT login (CLI/tools). Not for unattended automation.
+
+        ``account`` is the account number or alias (Identity Reset Phase 1d).
+        """
+        self._ctx.login(account, username, password, mfa_code=mfa_code)
 
     def login_browser(
         self,

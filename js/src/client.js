@@ -375,8 +375,8 @@ class HomeCloud {
     return data;
   }
 
-  async login(username, password, { mfaCode } = {}) {
-    const body = { username, password };
+  async login(account, username, password, { mfaCode } = {}) {
+    const body = { account, username, password };
     if (mfaCode) body.mfa_code = mfaCode;
     const data = await this.consoleRequest("POST", "auth/login", {
       json: body,

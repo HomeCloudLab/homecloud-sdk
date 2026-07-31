@@ -218,7 +218,15 @@ class SoAPI:
         self._ctx = ctx
 
     def list_buckets(self) -> list[dict[str, Any]]:
-        """Console JWT management helper. Object ops use Access Keys (no login)."""
+        """List buckets — Access Key preferred (Identity Reset Phase 2, no JWT needed).
+
+        Falls back to the console JWT management endpoint when no Access Key is
+        configured (interactive console sessions without `homecloud configure`).
+        """
+        if self._ctx.has_access_key:
+            account_id = self._ctx.account_id()
+            data = self._ctx.transport.data_plane_request("so", "GET", f"/{account_id}/buckets", account_id)
+            return data.get("items", [])
         self._ctx.require_console_session()
         account_id = self._ctx.account_id()
         try:
@@ -228,9 +236,8 @@ class SoAPI:
         except HomeCloudError as exc:
             if exc.status_code in {401, 403}:
                 raise HomeCloudError(
-                    "list_buckets requires a valid console login. "
-                    "Run: homecloud login. For automation, call so.list_objects(bucket) "
-                    "with Access Keys (no JWT).",
+                    "list_buckets requires an Access Key or a valid console login. "
+                    "Run: homecloud configure (or homecloud login).",
                     status_code=exc.status_code,
                     detail=exc.detail,
                 ) from exc

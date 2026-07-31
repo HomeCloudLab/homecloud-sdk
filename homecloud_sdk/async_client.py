@@ -126,8 +126,10 @@ class AsyncHomeCloudClient:
     def functions(self) -> AsyncFunctionsAPI:
         return AsyncFunctionsAPI(self._ctx)
 
-    async def login(self, username: str, password: str, *, mfa_code: str | None = None) -> None:
-        await self._ctx.login(username, password, mfa_code=mfa_code)
+    async def login(
+        self, account: str, username: str, password: str, *, mfa_code: str | None = None
+    ) -> None:
+        await self._ctx.login(account, username, password, mfa_code=mfa_code)
 
     async def login_browser(
         self,

@@ -40,7 +40,7 @@ client.mq.send("orders", {"id": 1})
 client.mq.send("orders", [{"id": 1}, {"id": 2}])  # batch (1–10)
 
 # Interactive helpers only (CLI/tools) — may involve MFA
-# client.login("alice", "…")
+# client.login("100200300400", "alice", "…")  # account number or alias, then username/password
 # client.login_browser()
 ```
 

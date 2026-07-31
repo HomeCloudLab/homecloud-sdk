@@ -163,8 +163,14 @@ class CoreContext:
         self._session = load_session().get(self.profile_name)
         self._auto_select_account()
 
-    def login(self, username: str, password: str, *, mfa_code: str | None = None) -> None:
-        """Interactive console login — not for unattended SDK/automation."""
+    def login(
+        self, account: str, username: str, password: str, *, mfa_code: str | None = None
+    ) -> None:
+        """Interactive console login — not for unattended SDK/automation.
+
+        ``account`` is the account number or alias (Identity Reset Phase 1d);
+        login now resolves Account -> Username -> Password -> MFA.
+        """
         if mfa_code or self._interactive_mfa:
             self._mfa_resolver = MfaResolver(
                 mfa_code=mfa_code,
@@ -174,7 +180,7 @@ class CoreContext:
             )
             self._transport.set_mfa_resolver(self._mfa_resolver)
 
-        body: dict[str, Any] = {"username": username, "password": password}
+        body: dict[str, Any] = {"account": account, "username": username, "password": password}
         if mfa_code:
             body["mfa_code"] = mfa_code
 

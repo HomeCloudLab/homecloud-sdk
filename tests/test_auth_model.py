@@ -83,11 +83,60 @@ def test_console_ops_require_jwt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
     client = HomeCloudClient.from_credentials("HCAK1", "sec", apex="example.test")
     with pytest.raises(NotLoggedInError):
-        client.so.list_buckets()
-    with pytest.raises(NotLoggedInError):
         client.queues.list()
     with pytest.raises(NotLoggedInError):
         client.apps.list()
+    client.close()
+
+
+def test_list_buckets_without_credentials_requires_login(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No Access Key and no console session — still needs *some* credential."""
+    monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("HOMECLOUD_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("HC_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("HOMECLOUD_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("HC_SECRET_ACCESS_KEY", raising=False)
+    client = HomeCloudClient()
+    with pytest.raises(NotLoggedInError):
+        client.so.list_buckets()
+    client.close()
+
+
+def test_list_buckets_uses_access_key_no_jwt_required(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Identity Reset Phase 2 — `so ls-buckets` works with an Access Key alone."""
+    monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
+    captured: dict[str, str] = {}
+
+    class MockHttpClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self) -> None:
+            return None
+
+        def request(self, method: str, url: str, **kwargs):
+            request = httpx.Request(method, url, headers=kwargs.get("headers"))
+            captured["path"] = request.url.path
+            captured["method"] = request.method
+            if request.url.path == "/access-key/whoami":
+                return httpx.Response(200, json={"account_id": "acc-buckets"}, request=request)
+            return httpx.Response(
+                200,
+                json={"items": [{"name": "media", "created_at": None}], "total": 1},
+                request=request,
+            )
+
+    monkeypatch.setattr("homecloud_core.transport.httpx.Client", MockHttpClient)
+
+    client = HomeCloud(access_key="HCAKBUCKETS", secret_key="secret", apex="example.test")
+    items = client.so.list_buckets()
+    assert items == [{"name": "media", "created_at": None}]
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/acc-buckets/buckets"
     client.close()
 
 

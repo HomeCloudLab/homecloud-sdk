@@ -134,8 +134,12 @@ def test_login_sends_username(
 
     monkeypatch.setattr("homecloud_core.transport.httpx.Client", MockHttpClient)
 
-    CoreContext().login("alice", "secret123")
-    assert captured["json"] == {"username": "alice", "password": "secret123"}
+    CoreContext().login("default", "alice", "secret123")
+    assert captured["json"] == {
+        "account": "default",
+        "username": "alice",
+        "password": "secret123",
+    }
 
 
 def test_whoami_resolves_account(
