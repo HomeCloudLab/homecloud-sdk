@@ -257,21 +257,25 @@ class AsyncSoAPI:
         recursive: bool = False,
         page: int = 1,
         page_size: int = 100,
+        continuation_token: str | None = None,
     ) -> dict[str, Any]:
         self._ctx.require_access_key()
         account_id = await self._ctx.account_id()
         path = f"/{account_id}/{bucket_name}/objects"
+        params: dict[str, Any] = {
+            "prefix": prefix,
+            "recursive": recursive,
+            "page": page,
+            "page_size": page_size,
+        }
+        if continuation_token:
+            params["continuation_token"] = continuation_token
         return await self._ctx.transport.data_plane_request(
             "so",
             "GET",
             path,
             account_id,
-            params={
-                "prefix": prefix,
-                "recursive": recursive,
-                "page": page,
-                "page_size": page_size,
-            },
+            params=params,
         )
 
     async def upload(
@@ -486,8 +490,10 @@ class AsyncSoAPI:
         prefix: str = "",
         recursive: bool = True,
     ) -> list[dict[str, Any]]:
+        """Page through SO list until exhausted (has_more / continuation token)."""
         items: list[dict[str, Any]] = []
         page = 1
+        continuation_token: str | None = None
         while True:
             data = await self.list_objects(
                 bucket_name,
@@ -495,13 +501,22 @@ class AsyncSoAPI:
                 recursive=recursive,
                 page=page,
                 page_size=100,
+                continuation_token=continuation_token,
             )
             items.extend(
                 item for item in data.get("items", []) if not item.get("is_dir")
             )
-            if page >= int(data.get("pages", 1)):
-                break
-            page += 1
+            next_token = data.get("next_continuation_token")
+            if data.get("has_more") and next_token:
+                continuation_token = str(next_token)
+                page = 1
+                continue
+            pages = data.get("pages")
+            if pages is not None and page < int(pages):
+                page += 1
+                continuation_token = None
+                continue
+            break
         return items
 
     async def delete_recursive(
