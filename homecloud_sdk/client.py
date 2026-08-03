@@ -15,6 +15,7 @@ from homecloud_sdk.services import (
     MailAPI,
     MqAPI,
     QueuesAPI,
+    RegistryAPI,
     SecretsAPI,
     SoAPI,
 )
@@ -226,6 +227,10 @@ class HomeCloudClient:
     @property
     def queues(self) -> QueuesAPI:
         return QueuesAPI(self._ctx)
+
+    @property
+    def ir(self) -> RegistryAPI:
+        return RegistryAPI(self._ctx)
 
     @property
     def mq(self) -> MqAPI:

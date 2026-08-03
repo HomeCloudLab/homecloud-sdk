@@ -78,6 +78,39 @@ class QueuesAPI:
         )
 
 
+class RegistryAPI:
+    """Image Registry (IR) — console management APIs (ADR-036)."""
+
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+
+    def list(self) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/registry/repositories"
+        )
+
+    def create(self, name: str, *, keep_last: int | None = None) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        body: dict[str, Any] = {"name": name}
+        if keep_last is not None:
+            body["keep_last"] = keep_last
+        return self._ctx.transport.console_request(
+            "POST",
+            f"accounts/{account_id}/registry/repositories",
+            json=body,
+        )
+
+    def usage(self) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request(
+            "GET", f"accounts/{account_id}/registry/repositories/usage"
+        )
+
+
 class MqAPI:
     def __init__(self, ctx: CoreContext) -> None:
         self._ctx = ctx
