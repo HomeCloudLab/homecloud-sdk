@@ -27,18 +27,22 @@ def credentials_path() -> Path:
 
 @dataclass
 class ProfileConfig:
+    """Runtime profile. Only Access Keys are persisted in the credentials file.
+
+    ``apex`` and ``default_account_id`` are runtime overlays (defaults / env /
+    constructor / session+whoami) — never written back to credentials.
+    """
+
     name: str
     apex: str = platform_apex()
     default_account_id: str | None = None
     access_key_id: str | None = None
     secret_access_key: str | None = None
 
-    def require_access_key(self) -> tuple[str, str, str]:
-        if not self.default_account_id:
-            raise ValueError("No account configured for this profile. Run: homecloud configure")
+    def require_access_key(self) -> tuple[str, str]:
         if not self.access_key_id or not self.secret_access_key:
             raise ValueError("Access Key not configured. Run: homecloud configure")
-        return self.default_account_id, self.access_key_id, self.secret_access_key
+        return self.access_key_id, self.secret_access_key
 
 
 @dataclass
@@ -55,9 +59,10 @@ class CredentialsFile:
 
 
 def _profile_from_dict(name: str, data: dict[str, Any]) -> ProfileConfig:
+    # Read legacy apex / default_account_id for older files, but never persist them.
     return ProfileConfig(
         name=name,
-        apex=data.get("apex", platform_apex()),
+        apex=str(data["apex"]).strip().rstrip("/") if data.get("apex") else platform_apex(),
         default_account_id=data.get("default_account_id"),
         access_key_id=data.get("access_key_id"),
         secret_access_key=data.get("secret_access_key"),
@@ -128,8 +133,6 @@ def save_credentials(credentials: CredentialsFile, path: Path | None = None) -> 
         "default_profile": credentials.default_profile,
         "profiles": {
             name: {
-                "apex": profile.apex,
-                "default_account_id": profile.default_account_id,
                 "access_key_id": profile.access_key_id,
                 "secret_access_key": profile.secret_access_key,
             }

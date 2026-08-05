@@ -74,11 +74,13 @@ function resolveProfile(name) {
   const session = loadSession().profiles[profileName] || {};
   return {
     profileName,
+    // New credentials omit apex/account; keep reading legacy file fields if present.
     apex: envFirst("HOMECLOUD_APEX", "HC_APEX") || profile.apex || DEFAULT_APEX,
     accountId:
       envFirst("HOMECLOUD_ACCOUNT_ID", "HC_ACCOUNT_ID") ||
-      profile.default_account_id ||
       session.active_account_id ||
+      session.last_used_account_id ||
+      profile.default_account_id ||
       null,
     accessKeyId:
       envFirst("HOMECLOUD_ACCESS_KEY_ID", "HC_ACCESS_KEY_ID") || profile.access_key_id || null,

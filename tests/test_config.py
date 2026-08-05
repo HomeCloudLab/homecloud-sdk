@@ -25,6 +25,7 @@ def test_load_flat_ui_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
                 "access_key_id": "HCAKTEST",
                 "secret_access_key": "secret",
                 "default_account_id": "acc-1",
+                "apex": "holab.abrdns.com",
             }
         ),
         encoding="utf-8",
@@ -33,16 +34,20 @@ def test_load_flat_ui_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 
     profile = load_credentials().get_profile()
     assert profile.access_key_id == "HCAKTEST"
+    # Legacy fields still load for compatibility, but are not written back.
     assert profile.default_account_id == "acc-1"
 
 
-def test_credentials_exclude_jwt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_credentials_store_access_keys_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     cred_file = tmp_path / "credentials"
     monkeypatch.setenv("HOMECLOUD_CREDENTIALS_FILE", str(cred_file))
 
     upsert_profile(
         ProfileConfig(
             name="default",
+            apex="ignored.example",
             default_account_id="acc-1",
             access_key_id="HCAK1",
             secret_access_key="secret",
@@ -51,6 +56,13 @@ def test_credentials_exclude_jwt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     raw = json.loads(cred_file.read_text(encoding="utf-8"))
     assert "access_token" not in json.dumps(raw)
+    profile = raw["profiles"]["default"]
+    assert profile == {
+        "access_key_id": "HCAK1",
+        "secret_access_key": "secret",
+    }
+    assert "apex" not in profile
+    assert "default_account_id" not in profile
 
 
 def test_session_stores_jwt_separately(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

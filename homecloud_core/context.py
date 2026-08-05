@@ -13,7 +13,7 @@ from homecloud_core.config import (
     load_credentials,
     upsert_profile,
 )
-from homecloud_core.defaults import DEFAULT_PROFILE, platform_apex
+from homecloud_core.defaults import DEFAULT_PROFILE
 from homecloud_core.env import (
     env_access_key_id,
     env_account_id,
@@ -287,13 +287,13 @@ class CoreContext:
         apex: str | None = None,
         make_default: bool = True,
     ) -> None:
+        # apex / default_account_id accepted for API compat but not persisted.
+        _ = default_account_id, apex
         upsert_profile(
             ProfileConfig(
                 name=profile_name,
-                apex=apex or platform_apex(),
                 access_key_id=access_key_id,
                 secret_access_key=secret_access_key,
-                default_account_id=default_account_id,
             ),
             make_default=make_default,
         )
@@ -305,12 +305,26 @@ class CoreContext:
         profile_name: str = DEFAULT_PROFILE,
     ) -> None:
         migrate_legacy_token_from_credentials(profile_name, raw.get("access_token"))
+        # Nested console export: { version, profiles: { name: { access_key_id, ... } } }
+        if isinstance(raw.get("profiles"), dict):
+            profiles = raw["profiles"]
+            chosen = profile_name if profile_name in profiles else next(iter(profiles), None)
+            if not chosen:
+                raise HomeCloudError("No profiles found in credentials file")
+            profile_raw = profiles[chosen]
+            if not isinstance(profile_raw, dict):
+                raise HomeCloudError("Invalid profile entry in credentials file")
+            CoreContext.configure_profile(
+                profile_name=str(chosen),
+                access_key_id=str(profile_raw["access_key_id"]),
+                secret_access_key=str(profile_raw["secret_access_key"]),
+                make_default=True,
+            )
+            return
         CoreContext.configure_profile(
             profile_name=profile_name,
             access_key_id=raw["access_key_id"],
             secret_access_key=raw["secret_access_key"],
-            default_account_id=raw.get("default_account_id"),
-            apex=raw.get("apex"),
         )
 
     def config_summary(self) -> dict[str, Any]:
