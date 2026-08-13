@@ -18,6 +18,9 @@ from homecloud_sdk.services import (
     RegistryAPI,
     SecretsAPI,
     SoAPI,
+    BillingAPI,
+    MonitoringAPI,
+    UsageAPI,
 )
 
 
@@ -256,6 +259,18 @@ class HomeCloudClient:
     @property
     def functions(self) -> FunctionsAPI:
         return FunctionsAPI(self._ctx)
+
+    @property
+    def usage(self) -> UsageAPI:
+        return UsageAPI(self._ctx)
+
+    @property
+    def billing(self) -> BillingAPI:
+        return BillingAPI(self._ctx)
+
+    @property
+    def monitoring(self) -> MonitoringAPI:
+        return MonitoringAPI(self._ctx)
 
     def login(
         self, account: str, username: str, password: str, *, mfa_code: str | None = None

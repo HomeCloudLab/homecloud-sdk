@@ -1012,3 +1012,50 @@ class FunctionsAPI:
             "GET",
             f"accounts/{account_id}/functions/{name}/invocations/{invocation_id}",
         )
+
+
+class UsageAPI:
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+
+    def list(self, **params: Any) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request("GET", f"accounts/{account_id}/usage", params=params or None)
+
+
+class BillingAPI:
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+
+    def _get(self, suffix: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request("GET", f"accounts/{account_id}/billing{suffix}", params=params)
+
+    def summary(self) -> dict[str, Any]:
+        return self._get("/summary")
+
+    def forecast(self, horizon: int = 30) -> dict[str, Any]:
+        return self._get("/forecast", {"horizon": horizon})
+
+    def invoices(self) -> list[dict[str, Any]]:
+        data = self._get("/invoices")
+        return data.get("items", [])
+
+
+class MonitoringAPI:
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+
+    def workspace(self) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        return self._ctx.transport.console_request("GET", f"accounts/{account_id}/monitoring/workspace")
+
+    def dashboards(self) -> list[dict[str, Any]]:
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/monitoring/dashboards")
+        return data.get("items", [])
+
