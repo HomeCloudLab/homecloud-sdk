@@ -213,6 +213,19 @@ class SoAPI {
     };
   }
 
+  async copy(bucketName, sourceKey, destinationKey, { sourceBucket = null } = {}) {
+    this._c.requireAccessKey();
+    const { signPath, urlPath } = soObjectPaths(this._c.accountId, bucketName, sourceKey);
+    return this._c.dataPlaneRequest("so", "POST", `${signPath}/copy`, {
+      urlPath: `${urlPath}/copy`,
+      signPath: `${signPath}/copy`,
+      json: {
+        destination_key: destinationKey,
+        source_bucket: sourceBucket || null,
+      },
+    });
+  }
+
   async deleteRecursive(bucketName, prefix = "") {
     const items = await this.listAllObjects(bucketName, { prefix, recursive: true });
     for (const item of items) {
@@ -221,7 +234,135 @@ class SoAPI {
     return items.length;
   }
 
-  async syncLocalToBucket(localDir, bucketName, { prefix = "", deleteExtra = false } = {}) {
+  _isSoUri(target) {
+    const lowered = String(target || "").toLowerCase();
+    return lowered.startsWith("so://") || lowered.startsWith("s3://");
+  }
+
+  _parseSoUri(target) {
+    let text = String(target || "").trim();
+    const lowered = text.toLowerCase();
+    if (lowered.startsWith("so://")) text = text.slice(5);
+    else if (lowered.startsWith("s3://")) text = text.slice(5);
+    text = text.replace(/^\/+|\/+$/g, "");
+    if (!text) throw new HomeCloudError("URI must include a bucket name");
+    const slash = text.indexOf("/");
+    if (slash < 0) return { bucket: text, prefix: "" };
+    return { bucket: text.slice(0, slash), prefix: text.slice(slash + 1) };
+  }
+
+  _syncJoinPrefix(prefixClean, relative) {
+    const rel = String(relative || "").replace(/^\/+/, "");
+    if (!prefixClean) return rel;
+    if (!rel) return prefixClean;
+    return `${prefixClean}/${rel}`;
+  }
+
+  _syncRelativePath(key, prefixClean) {
+    if (!prefixClean) return key;
+    if (key === prefixClean) return key.split("/").pop();
+    if (key.startsWith(`${prefixClean}/`)) return key.slice(prefixClean.length + 1);
+    return key;
+  }
+
+  /**
+   * Unified sync: local↔bucket or bucket↔bucket.
+   * Prefer this over syncLocalToBucket / syncBucketToLocal.
+   */
+  async sync(source, destination, { deleteExtra = false, skip = false } = {}) {
+    const srcRemote = this._isSoUri(source);
+    const dstRemote = this._isSoUri(destination);
+    if (srcRemote && dstRemote) {
+      const src = this._parseSoUri(source);
+      const dst = this._parseSoUri(destination);
+      return this._syncBucketToBucket(src.bucket, dst.bucket, {
+        sourcePrefix: src.prefix,
+        destinationPrefix: dst.prefix,
+        deleteExtra,
+        skip,
+      });
+    }
+    if (srcRemote && !dstRemote) {
+      const src = this._parseSoUri(source);
+      return this.syncBucketToLocal(src.bucket, destination, {
+        prefix: src.prefix,
+        deleteExtra,
+        skip,
+      });
+    }
+    if (!srcRemote && dstRemote) {
+      const dst = this._parseSoUri(destination);
+      return this.syncLocalToBucket(source, dst.bucket, {
+        prefix: dst.prefix,
+        deleteExtra,
+        skip,
+      });
+    }
+    throw new HomeCloudError(
+      "One or both sides must be an so:// URI (local↔bucket or bucket↔bucket)"
+    );
+  }
+
+  async _syncBucketToBucket(
+    sourceBucket,
+    destinationBucket,
+    { sourcePrefix = "", destinationPrefix = "", deleteExtra = false, skip = false } = {}
+  ) {
+    this._c.requireAccessKey();
+    const srcPrefix = String(sourcePrefix || "").replace(/^\/+|\/+$/g, "");
+    const dstPrefix = String(destinationPrefix || "").replace(/^\/+|\/+$/g, "");
+    if (sourceBucket === destinationBucket && srcPrefix === dstPrefix) {
+      throw new HomeCloudError(`Source and destination are the same: so://${sourceBucket}/${srcPrefix}`);
+    }
+
+    const sourceItems = await this.listAllObjects(sourceBucket, {
+      prefix: srcPrefix,
+      recursive: true,
+    });
+    const destItems = await this.listAllObjects(destinationBucket, {
+      prefix: dstPrefix,
+      recursive: true,
+    });
+
+    const sourceRels = new Map();
+    for (const item of sourceItems) {
+      const rel = this._syncRelativePath(item.key, srcPrefix);
+      sourceRels.set(rel, { key: item.key, size: Number(item.size || 0) });
+    }
+    const destRels = new Map();
+    for (const item of destItems) {
+      const rel = this._syncRelativePath(item.key, dstPrefix);
+      destRels.set(rel, { key: item.key, size: Number(item.size || 0) });
+    }
+
+    let copied = 0;
+    let skipped = 0;
+    for (const [rel, src] of sourceRels) {
+      const dest = destRels.get(rel);
+      if (skip && dest && dest.size === src.size) {
+        skipped += 1;
+        continue;
+      }
+      const dstKey = this._syncJoinPrefix(dstPrefix, rel);
+      await this.copy(destinationBucket, src.key, dstKey, {
+        sourceBucket: sourceBucket !== destinationBucket ? sourceBucket : null,
+      });
+      copied += 1;
+    }
+
+    let deleted = 0;
+    if (deleteExtra) {
+      for (const [rel, dest] of destRels) {
+        if (sourceRels.has(rel)) continue;
+        await this.delete(destinationBucket, dest.key);
+        deleted += 1;
+      }
+    }
+    return { copied, skipped, deleted };
+  }
+
+  /** Prefer sync("./dir", "so://bucket/prefix"). */
+  async syncLocalToBucket(localDir, bucketName, { prefix = "", deleteExtra = false, skip = false } = {}) {
     this._c.requireAccessKey();
     const root = path.resolve(localDir);
     const prefixClean = String(prefix || "").replace(/^\/+|\/+$/g, "");
@@ -232,43 +373,83 @@ class SoAPI {
         const st = fs.statSync(full);
         const rel = path.relative(base, full).split(path.sep).join("/");
         if (st.isDirectory()) out.push(...walk(full, base));
-        else out.push(rel);
+        else out.push({ rel, size: st.size });
       }
       return out;
     };
     const locals = walk(root, root);
-    for (const rel of locals) {
-      const key = prefixClean ? `${prefixClean}/${rel}` : rel;
+    const remote = await this.listAllObjects(bucketName, { prefix: prefixClean, recursive: true });
+    const remoteByKey = new Map(remote.map((item) => [item.key, item]));
+
+    let uploaded = 0;
+    let skipped = 0;
+    for (const { rel, size } of locals) {
+      const key = this._syncJoinPrefix(prefixClean, rel);
+      const existing = remoteByKey.get(key);
+      if (skip && existing && Number(existing.size || 0) === size) {
+        skipped += 1;
+        continue;
+      }
       await this.upload(bucketName, path.join(root, rel), { key });
+      uploaded += 1;
     }
+    let deleted = 0;
     if (deleteExtra) {
-      const remote = await this.listAllObjects(bucketName, { prefix: prefixClean, recursive: true });
-      const localKeys = new Set(
-        locals.map((rel) => (prefixClean ? `${prefixClean}/${rel}` : rel))
-      );
+      const localKeys = new Set(locals.map(({ rel }) => this._syncJoinPrefix(prefixClean, rel)));
       for (const item of remote) {
-        if (!localKeys.has(item.key)) await this.delete(bucketName, item.key);
+        if (!localKeys.has(item.key)) {
+          await this.delete(bucketName, item.key);
+          deleted += 1;
+        }
       }
     }
-    return { uploaded: locals.length };
+    return { uploaded, skipped, deleted };
   }
 
-  async syncBucketToLocal(bucketName, localDir, { prefix = "" } = {}) {
+  /** Prefer sync("so://bucket/prefix", "./dir"). */
+  async syncBucketToLocal(bucketName, localDir, { prefix = "", deleteExtra = false, skip = false } = {}) {
     this._c.requireAccessKey();
     const root = path.resolve(localDir);
     const prefixClean = String(prefix || "").replace(/^\/+|\/+$/g, "");
     const items = await this.listAllObjects(bucketName, { prefix: prefixClean, recursive: true });
+    let downloaded = 0;
+    let skippedCount = 0;
+    const remoteRels = new Set();
     for (const item of items) {
-      let rel = item.key;
-      if (prefixClean && item.key.startsWith(`${prefixClean}/`)) {
-        rel = item.key.slice(prefixClean.length + 1);
-      } else if (prefixClean && item.key === prefixClean) {
-        rel = path.basename(item.key);
-      }
+      const rel = this._syncRelativePath(item.key, prefixClean);
+      remoteRels.add(rel);
       const dest = path.join(root, rel);
+      if (
+        skip &&
+        fs.existsSync(dest) &&
+        fs.statSync(dest).isFile() &&
+        fs.statSync(dest).size === Number(item.size || 0)
+      ) {
+        skippedCount += 1;
+        continue;
+      }
       await this.download(bucketName, item.key, { destPath: dest });
+      downloaded += 1;
     }
-    return { downloaded: items.length };
+    let deleted = 0;
+    if (deleteExtra && fs.existsSync(root)) {
+      const walk = (dir, base) => {
+        const out = [];
+        for (const name of fs.readdirSync(dir)) {
+          const full = path.join(dir, name);
+          const st = fs.statSync(full);
+          if (st.isDirectory()) out.push(...walk(full, base));
+          else out.push(path.relative(base, full).split(path.sep).join("/"));
+        }
+        return out;
+      };
+      for (const rel of walk(root, root)) {
+        if (remoteRels.has(rel)) continue;
+        fs.unlinkSync(path.join(root, rel));
+        deleted += 1;
+      }
+    }
+    return { downloaded, skipped: skippedCount, deleted };
   }
 }
 

@@ -109,6 +109,8 @@ test("client exposes full service surface", () => {
     "generatePresignedUrl",
     "syncLocalToBucket",
     "syncBucketToLocal",
+    "sync",
+    "copy",
     "deleteRecursive",
     "listBuckets",
   ]) {

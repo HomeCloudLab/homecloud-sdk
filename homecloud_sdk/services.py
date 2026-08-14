@@ -12,7 +12,14 @@ from typing import Any, BinaryIO
 from homecloud_core.context import CoreContext
 from homecloud_core.errors import HomeCloudError
 from homecloud_core.progress_reader import ProgressReader
-from homecloud_core.so_paths import so_object_paths, sync_relative_local_path
+from homecloud_core.so_paths import (
+    format_so_uri,
+    is_so_uri,
+    parse_so_uri,
+    so_object_paths,
+    sync_join_prefix,
+    sync_relative_local_path,
+)
 from homecloud_sdk.mq_helpers import build_mq_batch_entries
 from homecloud_sdk.so_parallel import DEFAULT_SO_WORKERS, run_parallel
 
@@ -673,6 +680,84 @@ class SoAPI:
         run_parallel(keys, do_delete, max_workers=max_workers)
         return len(keys)
 
+    def sync(
+        self,
+        source: str | Path,
+        destination: str | Path,
+        *,
+        delete: bool = False,
+        skip: bool = False,
+        max_workers: int = DEFAULT_SO_WORKERS,
+        on_transfer: Callable[[str], None] | None = None,
+        on_skip: Callable[[str], None] | None = None,
+        on_delete: Callable[[str], None] | None = None,
+        on_begin: Callable[[int], None] | None = None,
+        on_transfer_begin: Callable[[int, int], None] | None = None,
+        on_bytes: Callable[[int], None] | None = None,
+        on_file_begin: Callable[[str], None] | None = None,
+        on_status: Callable[[str], None] | None = None,
+    ) -> dict[str, int]:
+        """Sync ``source`` → ``destination`` (one-way).
+
+        Either side may be a local directory or an ``so://bucket/prefix`` URI
+        (``s3://`` accepted). Supports local→bucket, bucket→local, and
+        bucket→bucket (server-side copy). Overwrites by default; ``skip=True``
+        skips same-size objects.
+
+        Prefer this over ``sync_local_to_bucket`` / ``sync_bucket_to_local``.
+        """
+        src = str(source)
+        dst = str(destination)
+        src_remote = is_so_uri(src)
+        dst_remote = is_so_uri(dst)
+
+        common: dict[str, Any] = {
+            "delete": delete,
+            "skip": skip,
+            "max_workers": max_workers,
+            "on_skip": on_skip,
+            "on_delete": on_delete,
+            "on_begin": on_begin,
+            "on_transfer_begin": on_transfer_begin,
+            "on_bytes": on_bytes,
+            "on_file_begin": on_file_begin,
+            "on_status": on_status,
+        }
+
+        if src_remote and dst_remote:
+            src_bucket, src_prefix = parse_so_uri(src)
+            dst_bucket, dst_prefix = parse_so_uri(dst)
+            return self._sync_bucket_to_bucket(
+                src_bucket,
+                dst_bucket,
+                source_prefix=src_prefix,
+                destination_prefix=dst_prefix,
+                on_copy=on_transfer,
+                **common,
+            )
+        if src_remote and not dst_remote:
+            bucket_name, prefix = parse_so_uri(src)
+            return self._sync_bucket_to_local(
+                bucket_name,
+                dst,
+                prefix=prefix,
+                on_download=on_transfer,
+                **common,
+            )
+        if not src_remote and dst_remote:
+            bucket_name, prefix = parse_so_uri(dst)
+            return self._sync_local_to_bucket(
+                src,
+                bucket_name,
+                prefix=prefix,
+                on_upload=on_transfer,
+                **common,
+            )
+        raise HomeCloudError(
+            "One or both sides must be an so:// URI. "
+            "Examples: ./dir so://bucket/  |  so://bucket/ ./dir  |  so://a/ so://b/"
+        )
+
     def sync_local_to_bucket(
         self,
         local_dir: str | Path,
@@ -691,7 +776,84 @@ class SoAPI:
         on_file_begin: Callable[[str], None] | None = None,
         on_status: Callable[[str], None] | None = None,
     ) -> dict[str, int]:
-        """Upload local directory to bucket (one-way). Overwrites by default; use skip=True to skip same-size keys."""
+        """Upload local directory to bucket (one-way).
+
+        Prefer :meth:`sync` with ``sync("./dir", "so://bucket/prefix")``.
+        """
+        return self._sync_local_to_bucket(
+            local_dir,
+            bucket_name,
+            prefix=prefix,
+            delete=delete,
+            skip=skip,
+            max_workers=max_workers,
+            on_upload=on_upload,
+            on_skip=on_skip,
+            on_delete=on_delete,
+            on_begin=on_begin,
+            on_transfer_begin=on_transfer_begin,
+            on_bytes=on_bytes,
+            on_file_begin=on_file_begin,
+            on_status=on_status,
+        )
+
+    def sync_bucket_to_local(
+        self,
+        bucket_name: str,
+        local_dir: str | Path,
+        *,
+        prefix: str = "",
+        delete: bool = False,
+        skip: bool = False,
+        max_workers: int = DEFAULT_SO_WORKERS,
+        on_download: Callable[[str], None] | None = None,
+        on_skip: Callable[[str], None] | None = None,
+        on_delete: Callable[[str], None] | None = None,
+        on_begin: Callable[[int], None] | None = None,
+        on_transfer_begin: Callable[[int, int], None] | None = None,
+        on_bytes: Callable[[int], None] | None = None,
+        on_file_begin: Callable[[str], None] | None = None,
+        on_status: Callable[[str], None] | None = None,
+    ) -> dict[str, int]:
+        """Download bucket prefix to local directory.
+
+        Prefer :meth:`sync` with ``sync("so://bucket/prefix", "./dir")``.
+        """
+        return self._sync_bucket_to_local(
+            bucket_name,
+            local_dir,
+            prefix=prefix,
+            delete=delete,
+            skip=skip,
+            max_workers=max_workers,
+            on_download=on_download,
+            on_skip=on_skip,
+            on_delete=on_delete,
+            on_begin=on_begin,
+            on_transfer_begin=on_transfer_begin,
+            on_bytes=on_bytes,
+            on_file_begin=on_file_begin,
+            on_status=on_status,
+        )
+
+    def _sync_local_to_bucket(
+        self,
+        local_dir: str | Path,
+        bucket_name: str,
+        *,
+        prefix: str = "",
+        delete: bool = False,
+        skip: bool = False,
+        max_workers: int = DEFAULT_SO_WORKERS,
+        on_upload: Callable[[str], None] | None = None,
+        on_skip: Callable[[str], None] | None = None,
+        on_delete: Callable[[str], None] | None = None,
+        on_begin: Callable[[int], None] | None = None,
+        on_transfer_begin: Callable[[int, int], None] | None = None,
+        on_bytes: Callable[[int], None] | None = None,
+        on_file_begin: Callable[[str], None] | None = None,
+        on_status: Callable[[str], None] | None = None,
+    ) -> dict[str, int]:
         root = Path(local_dir)
         if not root.is_dir():
             raise HomeCloudError(f"Not a directory: {local_dir}")
@@ -702,7 +864,7 @@ class SoAPI:
             if not path.is_file():
                 continue
             rel = path.relative_to(root).as_posix()
-            key = f"{prefix_clean}/{rel}" if prefix_clean else rel
+            key = sync_join_prefix(prefix_clean, rel)
             local_files[key] = path
 
         remote_items = self.list_all_objects(
@@ -754,8 +916,6 @@ class SoAPI:
         run_parallel(to_upload, do_upload, max_workers=max_workers)
         uploaded = len(to_upload)
 
-        deleted = 0
-
         def do_delete(key: str) -> None:
             self.delete(bucket_name, key)
             if on_delete is not None:
@@ -766,7 +926,7 @@ class SoAPI:
 
         return {"uploaded": uploaded, "skipped": skipped, "deleted": deleted}
 
-    def sync_bucket_to_local(
+    def _sync_bucket_to_local(
         self,
         bucket_name: str,
         local_dir: str | Path,
@@ -784,7 +944,6 @@ class SoAPI:
         on_file_begin: Callable[[str], None] | None = None,
         on_status: Callable[[str], None] | None = None,
     ) -> dict[str, int]:
-        """Download bucket prefix to local directory. Overwrites by default; use skip=True to skip same-size files."""
         root = Path(local_dir)
         root.mkdir(parents=True, exist_ok=True)
         if not root.is_dir():
@@ -799,7 +958,7 @@ class SoAPI:
                 if not path.is_file():
                     continue
                 rel = path.relative_to(root).as_posix()
-                key = f"{prefix_clean}/{rel}" if prefix_clean else rel
+                key = sync_join_prefix(prefix_clean, rel)
                 local_files[key] = path
 
         to_download: list[str] = []
@@ -864,6 +1023,114 @@ class SoAPI:
             deleted += 1
 
         return {"downloaded": downloaded, "skipped": skipped, "deleted": deleted}
+
+    def _sync_bucket_to_bucket(
+        self,
+        source_bucket: str,
+        destination_bucket: str,
+        *,
+        source_prefix: str = "",
+        destination_prefix: str = "",
+        delete: bool = False,
+        skip: bool = False,
+        max_workers: int = DEFAULT_SO_WORKERS,
+        on_copy: Callable[[str], None] | None = None,
+        on_skip: Callable[[str], None] | None = None,
+        on_delete: Callable[[str], None] | None = None,
+        on_begin: Callable[[int], None] | None = None,
+        on_transfer_begin: Callable[[int, int], None] | None = None,
+        on_bytes: Callable[[int], None] | None = None,
+        on_file_begin: Callable[[str], None] | None = None,
+        on_status: Callable[[str], None] | None = None,
+    ) -> dict[str, int]:
+        """Server-side sync of objects from one bucket/prefix to another."""
+        src_prefix = source_prefix.strip("/")
+        dst_prefix = destination_prefix.strip("/")
+
+        if (
+            source_bucket == destination_bucket
+            and src_prefix == dst_prefix
+        ):
+            raise HomeCloudError(
+                f"Source and destination are the same: {format_so_uri(source_bucket, src_prefix)}"
+            )
+
+        source_by_key = self._remote_objects_for_sync(source_bucket, src_prefix)
+        dest_by_key = self._remote_objects_for_sync(destination_bucket, dst_prefix)
+
+        source_rels: dict[str, tuple[str, int]] = {}
+        for key, item in source_by_key.items():
+            rel = sync_relative_local_path(key, src_prefix)
+            source_rels[rel] = (key, int(item.get("size") or 0))
+
+        dest_rels: dict[str, tuple[str, int]] = {}
+        for key, item in dest_by_key.items():
+            rel = sync_relative_local_path(key, dst_prefix)
+            dest_rels[rel] = (key, int(item.get("size") or 0))
+
+        to_copy: list[str] = []
+        to_skip: list[str] = []
+        for rel in sorted(source_rels):
+            src_key, src_size = source_rels[rel]
+            dest_entry = dest_rels.get(rel)
+            if skip and dest_entry is not None and dest_entry[1] == src_size:
+                to_skip.append(rel)
+            else:
+                to_copy.append(rel)
+
+        to_delete_rels = (
+            [rel for rel in dest_rels if rel not in source_rels] if delete else []
+        )
+
+        total_ops = len(to_copy) + len(to_skip) + len(to_delete_rels)
+        transfer_bytes = sum(source_rels[rel][1] for rel in to_copy)
+        if on_status is not None:
+            on_status(
+                f"scan  {len(source_rels)} source, {len(dest_rels)} dest, {total_ops} operations"
+            )
+        if on_begin is not None:
+            on_begin(total_ops)
+        if on_transfer_begin is not None:
+            on_transfer_begin(transfer_bytes, len(to_copy))
+
+        skipped = 0
+        for rel in to_skip:
+            src_key, _ = source_rels[rel]
+            if on_skip is not None:
+                on_skip(src_key)
+            skipped += 1
+
+        cross_bucket = source_bucket != destination_bucket
+
+        def do_copy(rel: str) -> None:
+            src_key, size = source_rels[rel]
+            dst_key = sync_join_prefix(dst_prefix, rel)
+            if on_file_begin is not None:
+                on_file_begin(src_key)
+            self.copy(
+                destination_bucket,
+                src_key,
+                dst_key,
+                source_bucket=source_bucket if cross_bucket else None,
+            )
+            if on_bytes is not None:
+                on_bytes(size)
+            if on_copy is not None:
+                on_copy(src_key)
+
+        run_parallel(to_copy, do_copy, max_workers=max_workers)
+        copied = len(to_copy)
+
+        def do_delete(rel: str) -> None:
+            dst_key, _ = dest_rels[rel]
+            self.delete(destination_bucket, dst_key)
+            if on_delete is not None:
+                on_delete(dst_key)
+
+        run_parallel(to_delete_rels, do_delete, max_workers=max_workers)
+        deleted = len(to_delete_rels)
+
+        return {"copied": copied, "skipped": skipped, "deleted": deleted}
 
 
 StorageAPI = SoAPI
