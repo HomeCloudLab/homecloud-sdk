@@ -413,6 +413,58 @@ class SoAPI:
             url_path=url_path,
         )
 
+    def copy(
+        self,
+        bucket_name: str,
+        source_key: str,
+        destination_key: str,
+        *,
+        source_bucket: str | None = None,
+    ) -> dict[str, Any]:
+        """Server-side copy into ``bucket_name`` (destination).
+
+        Data plane — Access Key. ``source_bucket`` defaults to the destination
+        bucket (same-bucket copy). Cross-bucket: pass ``source_bucket``.
+        """
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        sign_path, url_path = so_object_paths(account_id, bucket_name, source_key)
+        return self._ctx.transport.data_plane_request(
+            "so",
+            "POST",
+            f"{sign_path}/copy",
+            account_id,
+            url_path=f"{url_path}/copy",
+            json={
+                "destination_key": destination_key,
+                "source_bucket": source_bucket,
+            },
+        )
+
+    def move(
+        self,
+        bucket_name: str,
+        source_key: str,
+        destination_key: str,
+        *,
+        source_bucket: str | None = None,
+    ) -> dict[str, Any]:
+        """Copy then delete source (verify destination metadata first).
+
+        Data plane — Access Key. Deletes from ``source_bucket`` (or
+        ``bucket_name`` when omitted).
+        """
+        src_bucket = source_bucket or bucket_name
+        copied = self.copy(
+            bucket_name,
+            source_key,
+            destination_key,
+            source_bucket=source_bucket,
+        )
+        self.head_object(bucket_name, destination_key)
+        self.delete(src_bucket, source_key)
+        return copied
+
     def download(
         self,
         bucket_name: str,
@@ -561,10 +613,14 @@ class SoAPI:
         *,
         prefix: str = "",
         recursive: bool = True,
+        include_dirs: bool = False,
     ) -> list[dict[str, Any]]:
         """Page through SO list until exhausted (has_more / continuation token).
 
         SO returns ``pages: null`` after honest pagination — do not ``int(pages)``.
+        By default directory/prefix placeholders (``is_dir``) are omitted — same
+        as sync/delete helpers. Pass ``include_dirs=True`` for browser-style
+        listings (e.g. CLI ``so ls`` without ``--recursive``).
         """
         items: list[dict[str, Any]] = []
         page = 1
@@ -578,9 +634,10 @@ class SoAPI:
                 page_size=100,
                 continuation_token=continuation_token,
             )
-            items.extend(
-                item for item in data.get("items", []) if not item.get("is_dir")
-            )
+            for item in data.get("items", []):
+                if not include_dirs and item.get("is_dir"):
+                    continue
+                items.append(item)
             next_token = data.get("next_continuation_token")
             if data.get("has_more") and next_token:
                 continuation_token = str(next_token)
