@@ -1,0 +1,51 @@
+[
+  {
+    "name": "object-not-found",
+    "status": 404,
+    "detail": {"message": "NoSuchKey"},
+    "url": "https://so.example.test/acc/docs/objects/a.txt/metadata",
+    "type": "NotFoundError",
+    "resource_type": "object",
+    "resource": "docs/a.txt"
+  },
+  {
+    "name": "queue-not-found",
+    "status": 404,
+    "url": "https://mq.example.test/acc/orders/messages",
+    "type": "NotFoundError",
+    "resource_type": "queue",
+    "resource": "orders"
+  },
+  {
+    "name": "unauthorized",
+    "status": 401,
+    "type": "UnauthorizedError"
+  },
+  {
+    "name": "mfa-required",
+    "status": 403,
+    "detail": {"error": {"code": "MFA_REQUIRED"}},
+    "type": "PermissionDeniedError",
+    "error_code": "MFA_REQUIRED"
+  },
+  {
+    "name": "bad-request",
+    "status": 400,
+    "type": "BadRequestError"
+  },
+  {
+    "name": "conflict",
+    "status": 409,
+    "type": "ConflictError"
+  },
+  {
+    "name": "rate-limit",
+    "status": 429,
+    "type": "RateLimitError"
+  },
+  {
+    "name": "unavailable-503",
+    "status": 503,
+    "type": "ServiceUnavailableError"
+  }
+]

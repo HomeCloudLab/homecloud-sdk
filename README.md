@@ -1,8 +1,8 @@
 # HomeCloud SDK
 
-Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud-platform/sdk`).
+Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud-platform/sdk`), **Go** under [`go/`](./go/) (`github.com/HomeCloudLab/homecloud-sdk/go`).
 
-**Parity goal:** both languages expose the same HomeCloud capabilities and ship on the same `v*` tag. Track gaps in [`js/PARITY.md`](./js/PARITY.md). Node is MVP today (STS / Functions-first); full surface is the committed target.
+**Parity goal:** same HomeCloud capabilities on the same semver. Track gaps in [`js/PARITY.md`](./js/PARITY.md). Go follows ADR-051: idiomatic public API, behavioral parity, no bug-parity for unsafe retries.
 
 ## Auth model (cloud-style)
 
@@ -57,8 +57,14 @@ await client.so.putJson("docs", "a.json", { ok: true });
 
 See [`js/README.md`](./js/README.md). Same STS / `mailapi` rewrite rules as Python ≥0.4.9.
 
-Publish Node via the **same** tag as Python: `v0.5.0` runs PyPI + npm together.
-See [`js/README.md`](./js/README.md) and `./scripts/bump-version.sh`.
+### Go (`github.com/HomeCloudLab/homecloud-sdk/go`)
+
+```go
+client, err := homecloud.FromEnv()
+_, err = client.SO.PutJSON(ctx, "docs", "a.json", map[string]any{"ok": true})
+```
+
+See [`go/README.md`](./go/README.md). Release tags: `v*` (PyPI/npm) and `go/v*` (Go module).
 
 ### Async
 
@@ -107,6 +113,8 @@ homecloud/          ← preferred public import (Python)
 homecloud_core/     ← auth, routing, signing, sessions, MFA helpers
 homecloud_sdk/      ← HomeCloud + AsyncHomeCloud
 js/                 ← @homecloud-platform/sdk (Node.js 20+)
+go/                 ← github.com/HomeCloudLab/homecloud-sdk/go (Go 1.22+)
+testdata/contracts/ ← shared SigV1 + error fixtures
 ```
 
 CLI (`homecloud-cli`) is a Typer/Rich wrapper; it opts into `interactive_mfa=True` on the sync client.
@@ -178,6 +186,7 @@ pytest tests/ -q
 pytest tests/test_live_integration.py -q   # needs Access Keys in ~/.homecloud
 
 cd js && npm test
+cd go && go test ./...
 ```
 
 ### Service-account verification (pre-PyPI)

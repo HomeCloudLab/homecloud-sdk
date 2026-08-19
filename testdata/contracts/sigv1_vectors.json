@@ -1,0 +1,68 @@
+[
+  {
+    "name": "create-queue",
+    "method": "POST",
+    "path": "/api/v1/accounts/11111111-1111-1111-1111-111111111111/queues",
+    "timestamp": "2026-08-17T12:00:00Z",
+    "account_id": "11111111-1111-1111-1111-111111111111",
+    "secret": "test-secret-for-vectors",
+    "string_to_sign": "POST\n/api/v1/accounts/11111111-1111-1111-1111-111111111111/queues\n2026-08-17T12:00:00Z\n11111111-1111-1111-1111-111111111111",
+    "signature": "27d35274276d7b7f912ff54c45e114d9cd59c29fa75abc45f21c930bb1bf6b02",
+    "whoami": false
+  },
+  {
+    "name": "get-queue",
+    "method": "GET",
+    "path": "/api/v1/accounts/11111111-1111-1111-1111-111111111111/queues/jobs",
+    "timestamp": "2026-08-17T12:00:00Z",
+    "account_id": "11111111-1111-1111-1111-111111111111",
+    "secret": "test-secret-for-vectors",
+    "string_to_sign": "GET\n/api/v1/accounts/11111111-1111-1111-1111-111111111111/queues/jobs\n2026-08-17T12:00:00Z\n11111111-1111-1111-1111-111111111111",
+    "signature": "e976596248439cbee3a00585f861480e7fe757b2291be3b16bb56578ab0e9349",
+    "whoami": false
+  },
+  {
+    "name": "create-bucket",
+    "method": "POST",
+    "path": "/api/v1/accounts/11111111-1111-1111-1111-111111111111/storage/buckets",
+    "timestamp": "2026-08-17T12:00:00Z",
+    "account_id": "11111111-1111-1111-1111-111111111111",
+    "secret": "test-secret-for-vectors",
+    "string_to_sign": "POST\n/api/v1/accounts/11111111-1111-1111-1111-111111111111/storage/buckets\n2026-08-17T12:00:00Z\n11111111-1111-1111-1111-111111111111",
+    "signature": "c5a747447bd4f38cb9b39feee704262d82952b3fe4f50f93cab8aabdb0ff2522",
+    "whoami": false
+  },
+  {
+    "name": "get-bucket",
+    "method": "GET",
+    "path": "/api/v1/accounts/11111111-1111-1111-1111-111111111111/storage/buckets/assets",
+    "timestamp": "2026-08-17T12:00:00Z",
+    "account_id": "11111111-1111-1111-1111-111111111111",
+    "secret": "test-secret-for-vectors",
+    "string_to_sign": "GET\n/api/v1/accounts/11111111-1111-1111-1111-111111111111/storage/buckets/assets\n2026-08-17T12:00:00Z\n11111111-1111-1111-1111-111111111111",
+    "signature": "4525c4e7693cbd12de33ea043e7d1d5fd275c25f27c6a16c9bed9addd42286b4",
+    "whoami": false
+  },
+  {
+    "name": "get-account",
+    "method": "GET",
+    "path": "/api/v1/accounts/11111111-1111-1111-1111-111111111111",
+    "timestamp": "2026-08-17T12:00:00Z",
+    "account_id": "11111111-1111-1111-1111-111111111111",
+    "secret": "test-secret-for-vectors",
+    "string_to_sign": "GET\n/api/v1/accounts/11111111-1111-1111-1111-111111111111\n2026-08-17T12:00:00Z\n11111111-1111-1111-1111-111111111111",
+    "signature": "2412f173d19e927b5322e001610aa075d21ccc6123e077f261616d01ebab3a85",
+    "whoami": false
+  },
+  {
+    "name": "whoami",
+    "method": "GET",
+    "path": "/api/v1/access-key/whoami",
+    "timestamp": "2026-08-17T12:00:00Z",
+    "account_id": "-",
+    "secret": "test-secret-for-vectors",
+    "string_to_sign": "GET\n/api/v1/access-key/whoami\n2026-08-17T12:00:00Z\n-",
+    "signature": "d25c263545c55f07ed87b53a3da4aaa5ce1d1f8d25f229277dafb46d45f80349",
+    "whoami": true
+  }
+]

@@ -13,13 +13,21 @@ python - <<PY
 from pathlib import Path
 import re
 ver = "${VER}"
-path = Path(r"${ROOT}") / "pyproject.toml"
+root = Path(r"${ROOT}")
+path = root / "pyproject.toml"
 text = path.read_text(encoding="utf-8")
 text2, n = re.subn(r'(?m)^version\s*=\s*"[^"]*"', f'version = "{ver}"', text, count=1)
 if n != 1:
     raise SystemExit("pyproject.toml version not updated")
 path.write_text(text2, encoding="utf-8")
 print(f"pyproject.toml → {ver}")
+doc = root / "go" / "doc.go"
+gtext = doc.read_text(encoding="utf-8")
+g2, n = re.subn(r'const Version = "[^"]*"', f'const Version = "{ver}"', gtext, count=1)
+if n != 1:
+    raise SystemExit("go/doc.go Version not updated")
+doc.write_text(g2, encoding="utf-8")
+print(f"go/doc.go → {ver}")
 PY
 
 (
@@ -29,10 +37,10 @@ PY
 
 echo
 echo "Next:"
-echo "  git add pyproject.toml js/package.json"
+echo "  git add pyproject.toml js/package.json go/doc.go"
 echo "  git commit -m \"Release ${VER}\""
 echo "  git push origin HEAD"
-echo "  git tag v${VER}"
-echo "  git push origin v${VER}"
+echo "  git tag v${VER} && git push origin v${VER}"
+echo "  git tag go/v${VER} && git push origin go/v${VER}"
 echo
-echo "That single tag runs Publish to PyPI + Publish to npm (same version)."
+echo "v* publishes PyPI + npm. go/v* is the Go module version (subdirectory)."
