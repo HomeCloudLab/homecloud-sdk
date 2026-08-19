@@ -28,6 +28,20 @@ if n != 1:
     raise SystemExit("go/doc.go Version not updated")
 doc.write_text(g2, encoding="utf-8")
 print(f"go/doc.go → {ver}")
+pom = root / "java" / "pom.xml"
+ptext = pom.read_text(encoding="utf-8")
+p2, n = re.subn(r"(<artifactId>homecloud-sdk</artifactId>\s*<version>)[^<]+", rf"\g<1>{ver}", ptext, count=1)
+if n != 1:
+    raise SystemExit("java/pom.xml version not updated")
+pom.write_text(p2, encoding="utf-8")
+print(f"java/pom.xml → {ver}")
+jver = root / "java" / "src" / "main" / "java" / "com" / "homecloudlab" / "sdk" / "Version.java"
+jtext = jver.read_text(encoding="utf-8")
+j2, n = re.subn(r'VALUE = "[^"]*"', f'VALUE = "{ver}"', jtext, count=1)
+if n != 1:
+    raise SystemExit("Version.java not updated")
+jver.write_text(j2, encoding="utf-8")
+print(f"Version.java → {ver}")
 PY
 
 (
@@ -37,10 +51,10 @@ PY
 
 echo
 echo "Next:"
-echo "  git add pyproject.toml js/package.json go/doc.go"
+echo "  git add pyproject.toml js/package.json go/doc.go java/pom.xml java/src/main/java/com/homecloudlab/sdk/Version.java"
 echo "  git commit -m \"Release ${VER}\""
 echo "  git push origin HEAD"
 echo "  git tag v${VER} && git push origin v${VER}"
 echo "  git tag go/v${VER} && git push origin go/v${VER}"
 echo
-echo "v* publishes PyPI + npm. go/v* is the Go module version (subdirectory)."
+echo "v* publishes PyPI + npm + Java (GitHub Packages). go/v* is the Go module version (subdirectory)."

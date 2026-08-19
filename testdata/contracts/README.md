@@ -1,6 +1,6 @@
 # Shared SDK contract fixtures
 
-Used by the Go SDK tests today; Python/Node should load the same files when cheap.
+Used by Go and Java SDK tests today; Python/Node should load the same files when cheap.
 
 | File | Purpose |
 |------|---------|

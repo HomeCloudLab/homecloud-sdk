@@ -1,8 +1,8 @@
 # HomeCloud SDK
 
-Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud-platform/sdk`), **Go** under [`go/`](./go/) (`github.com/HomeCloudLab/homecloud-sdk/go`).
+Polyglot SDK for HomeCloud — **Python** at the repo root (`pip install homecloud-sdk`), **Node.js** under [`js/`](./js/) (`@homecloud-platform/sdk`), **Go** under [`go/`](./go/) (`github.com/HomeCloudLab/homecloud-sdk/go`), **Java** under [`java/`](./java/) (`com.homecloudlab:homecloud-sdk`).
 
-**Parity goal:** same HomeCloud capabilities on the same semver. Track gaps in [`js/PARITY.md`](./js/PARITY.md). Go follows ADR-051: idiomatic public API, behavioral parity, no bug-parity for unsafe retries.
+**Parity goal:** same HomeCloud capabilities on the same semver. Track gaps in [`js/PARITY.md`](./js/PARITY.md). Go follows ADR-051 and Java follows ADR-052: idiomatic public API, behavioral parity, no bug-parity for unsafe retries.
 
 ## Auth model (cloud-style)
 
@@ -64,7 +64,16 @@ client, err := homecloud.FromEnv()
 _, err = client.SO.PutJSON(ctx, "docs", "a.json", map[string]any{"ok": true})
 ```
 
-See [`go/README.md`](./go/README.md). Release tags: `v*` (PyPI/npm) and `go/v*` (Go module).
+See [`go/README.md`](./go/README.md). Release tags: `v*` (PyPI/npm/Java) and `go/v*` (Go module).
+
+### Java (`com.homecloudlab:homecloud-sdk`)
+
+```java
+HomeCloud client = HomeCloud.fromEnv();
+client.so().putJson("docs", "a.json", Map.of("ok", true));
+```
+
+See [`java/README.md`](./java/README.md). Requires Java 17. First publish: GitHub Packages; Maven Central is the public GA gate.
 
 ### Async
 
@@ -114,6 +123,7 @@ homecloud_core/     ← auth, routing, signing, sessions, MFA helpers
 homecloud_sdk/      ← HomeCloud + AsyncHomeCloud
 js/                 ← @homecloud-platform/sdk (Node.js 20+)
 go/                 ← github.com/HomeCloudLab/homecloud-sdk/go (Go 1.22+)
+java/               ← com.homecloudlab:homecloud-sdk (Java 17+)
 testdata/contracts/ ← shared SigV1 + error fixtures
 ```
 
@@ -187,6 +197,7 @@ pytest tests/test_live_integration.py -q   # needs Access Keys in ~/.homecloud
 
 cd js && npm test
 cd go && go test ./...
+cd java && mvn test
 ```
 
 ### Service-account verification (pre-PyPI)
