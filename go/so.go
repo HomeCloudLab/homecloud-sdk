@@ -42,10 +42,18 @@ func (s *SO) CreateBucket(ctx context.Context, name string) (*Bucket, error) {
 	if err := s.c.ensureAccountID(ctx); err != nil {
 		return nil, err
 	}
-	raw, err := s.c.consoleJSON(ctx, http.MethodPost, "accounts/"+s.c.accountID+"/storage/buckets", true,
-		withJSON(map[string]string{"name": strings.ToLower(strings.TrimSpace(name))}),
-		withIdempotency(newIdempotencyKey()),
+	path := "accounts/" + s.c.accountID + "/storage/buckets"
+	body := map[string]string{"name": strings.ToLower(strings.TrimSpace(name))}
+	opts := []func(*requestSpec){withJSON(body), withIdempotency(newIdempotencyKey())}
+	var (
+		raw json.RawMessage
+		err error
 	)
+	if s.c.hasAccessKey() {
+		raw, err = s.c.consoleSignedJSON(ctx, http.MethodPost, path, s.c.accountID, opts...)
+	} else {
+		raw, err = s.c.consoleJSON(ctx, http.MethodPost, path, true, opts...)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +68,12 @@ func (s *SO) DeleteBucket(ctx context.Context, name string) error {
 	if err := s.c.ensureAccountID(ctx); err != nil {
 		return err
 	}
-	_, err := s.c.consoleJSON(ctx, http.MethodDelete, "accounts/"+s.c.accountID+"/storage/buckets/"+strings.ToLower(strings.TrimSpace(name)), true)
+	path := "accounts/" + s.c.accountID + "/storage/buckets/" + strings.ToLower(strings.TrimSpace(name))
+	if s.c.hasAccessKey() {
+		_, err := s.c.consoleSignedJSON(ctx, http.MethodDelete, path, s.c.accountID)
+		return err
+	}
+	_, err := s.c.consoleJSON(ctx, http.MethodDelete, path, true)
 	return err
 }
 

@@ -68,20 +68,25 @@ class AsyncQueuesAPI:
         self._ctx = ctx
 
     async def list(self, *, live: bool = False) -> list[dict[str, Any]]:
-        self._ctx.require_console_session()
         account_id = await self._ctx.account_id()
         params = {"live": "true"} if live else None
-        data = await self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/queues", params=params
-        )
+        path = f"accounts/{account_id}/queues"
+        if self._ctx.has_access_key:
+            data = await self._ctx.transport.console_signed_request(
+                "GET", path, account_id, params=params
+            )
+            return data.get("items", [])
+        self._ctx.require_console_session()
+        data = await self._ctx.transport.console_request("GET", path, params=params)
         return data.get("items", [])
 
     async def get(self, queue_name: str) -> dict[str, Any]:
-        self._ctx.require_console_session()
         account_id = await self._ctx.account_id()
-        return await self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/queues/{queue_name}"
-        )
+        path = f"accounts/{account_id}/queues/{queue_name}"
+        if self._ctx.has_access_key:
+            return await self._ctx.transport.console_signed_request("GET", path, account_id)
+        self._ctx.require_console_session()
+        return await self._ctx.transport.console_request("GET", path)
 
 
 class AsyncMqAPI:
@@ -240,21 +245,24 @@ class AsyncSoAPI:
         return data.get("items", [])
 
     async def create_bucket(self, name: str) -> dict[str, Any]:
-        self._ctx.require_console_session()
         account_id = await self._ctx.account_id()
-        return await self._ctx.transport.console_request(
-            "POST",
-            f"accounts/{account_id}/storage/buckets",
-            json={"name": name.strip().lower()},
-        )
+        path = f"accounts/{account_id}/storage/buckets"
+        body = {"name": name.strip().lower()}
+        if self._ctx.has_access_key:
+            return await self._ctx.transport.console_signed_request(
+                "POST", path, account_id, json=body
+            )
+        self._ctx.require_console_session()
+        return await self._ctx.transport.console_request("POST", path, json=body)
 
     async def delete_bucket(self, name: str) -> None:
-        self._ctx.require_console_session()
         account_id = await self._ctx.account_id()
-        await self._ctx.transport.console_request(
-            "DELETE",
-            f"accounts/{account_id}/storage/buckets/{name.strip().lower()}",
-        )
+        path = f"accounts/{account_id}/storage/buckets/{name.strip().lower()}"
+        if self._ctx.has_access_key:
+            await self._ctx.transport.console_signed_request("DELETE", path, account_id)
+            return
+        self._ctx.require_console_session()
+        await self._ctx.transport.console_request("DELETE", path)
 
     async def list_objects(
         self,

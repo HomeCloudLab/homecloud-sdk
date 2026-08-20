@@ -451,6 +451,16 @@ public final class HomeCloud implements AutoCloseable {
     }
 
     byte[] consoleSignedJson(String method, String pathSeg, String account, Map<String, String> query) {
+        return consoleSignedJson(method, pathSeg, account, null, query, null);
+    }
+
+    byte[] consoleSignedJson(
+            String method,
+            String pathSeg,
+            String account,
+            Object jsonBody,
+            Map<String, String> query,
+            String idempotency) {
         requireAccessKey();
         String rel = pathSeg.startsWith("/") ? pathSeg.substring(1) : pathSeg;
         Transport.Spec spec = new Transport.Spec();
@@ -459,8 +469,13 @@ public final class HomeCloud implements AutoCloseable {
         spec.signPath = "/api/v1/" + rel;
         spec.accountId = account;
         spec.signed = true;
+        spec.jsonBody = jsonBody;
         spec.query = query;
         spec.retry = Transport.retryFromMethod(method);
+        if (idempotency != null && !idempotency.isEmpty()) {
+            spec.idempotencyKey = idempotency;
+            spec.retry = Transport.RetryMode.IF_IDEMPOTENCY;
+        }
         return Transport.doRequest(this, spec);
     }
 

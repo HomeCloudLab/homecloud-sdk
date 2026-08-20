@@ -67,22 +67,27 @@ class QueuesAPI:
         self._ctx = ctx
 
     def list(self, *, live: bool = False) -> list[dict[str, Any]]:
-        """List queue definitions via Console API (JWT). Runtime send/receive: ``client.mq``."""
-        self._ctx.require_console_session()
+        """List queue definitions — Access Key SigV1 preferred; JWT fallback."""
         account_id = self._ctx.account_id()
         params = {"live": "true"} if live else None
-        data = self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/queues", params=params
-        )
+        path = f"accounts/{account_id}/queues"
+        if self._ctx.has_access_key:
+            data = self._ctx.transport.console_signed_request(
+                "GET", path, account_id, params=params
+            )
+            return data.get("items", [])
+        self._ctx.require_console_session()
+        data = self._ctx.transport.console_request("GET", path, params=params)
         return data.get("items", [])
 
     def get(self, queue_name: str) -> dict[str, Any]:
-        """Queue detail with live stats (messages, inflight, DLQ) via Console API (JWT)."""
-        self._ctx.require_console_session()
+        """Queue detail — Access Key SigV1 preferred; JWT fallback."""
         account_id = self._ctx.account_id()
-        return self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/queues/{queue_name}"
-        )
+        path = f"accounts/{account_id}/queues/{queue_name}"
+        if self._ctx.has_access_key:
+            return self._ctx.transport.console_signed_request("GET", path, account_id)
+        self._ctx.require_console_session()
+        return self._ctx.transport.console_request("GET", path)
 
 
 class RegistryAPI:
@@ -285,23 +290,26 @@ class SoAPI:
         return data.get("items", [])
 
     def create_bucket(self, name: str) -> dict[str, Any]:
-        """Create a bucket via Console API (JWT + resources.create)."""
-        self._ctx.require_console_session()
+        """Create a bucket — Access Key SigV1 preferred; JWT fallback."""
         account_id = self._ctx.account_id()
-        return self._ctx.transport.console_request(
-            "POST",
-            f"accounts/{account_id}/storage/buckets",
-            json={"name": name.strip().lower()},
-        )
+        path = f"accounts/{account_id}/storage/buckets"
+        body = {"name": name.strip().lower()}
+        if self._ctx.has_access_key:
+            return self._ctx.transport.console_signed_request(
+                "POST", path, account_id, json=body
+            )
+        self._ctx.require_console_session()
+        return self._ctx.transport.console_request("POST", path, json=body)
 
     def delete_bucket(self, name: str) -> None:
-        """Delete a bucket via Console API (JWT + resources.delete)."""
-        self._ctx.require_console_session()
+        """Delete a bucket — Access Key SigV1 preferred; JWT fallback."""
         account_id = self._ctx.account_id()
-        self._ctx.transport.console_request(
-            "DELETE",
-            f"accounts/{account_id}/storage/buckets/{name.strip().lower()}",
-        )
+        path = f"accounts/{account_id}/storage/buckets/{name.strip().lower()}"
+        if self._ctx.has_access_key:
+            self._ctx.transport.console_signed_request("DELETE", path, account_id)
+            return
+        self._ctx.require_console_session()
+        self._ctx.transport.console_request("DELETE", path)
 
     def list_objects(
         self,

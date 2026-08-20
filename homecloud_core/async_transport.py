@@ -121,6 +121,30 @@ class AsyncTransport:
             await asyncio.sleep(0.5 * (attempt + 1))
         raise last_error or HomeCloudError("Request failed")
 
+    async def console_signed_request(
+        self,
+        method: str,
+        path: str,
+        account_id: str,
+        *,
+        json: Any | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Console API with Access Key SigV1 — management helpers without JWT."""
+        require_access_key(self.access_key_id, self.secret_access_key)
+        assert self.access_key_id and self.secret_access_key
+        rel = path.lstrip("/")
+        sign_path = f"/api/v1/{rel}"
+        headers = sign_request_headers(
+            access_key_id=self.access_key_id,
+            secret=self.secret_access_key,
+            method=method,
+            path=sign_path,
+            account_id=account_id,
+        )
+        url = console_request_url(self.apex, rel)
+        return await self._request(method, url, headers=headers, json=json, params=params)
+
     async def data_plane_request_bytes(
         self,
         plane: Plane,

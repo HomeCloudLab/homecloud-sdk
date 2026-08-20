@@ -32,23 +32,42 @@ public final class So {
 
     public Bucket createBucket(String name) {
         c.ensureAccountId();
-        byte[] raw = c.consoleJson(
-                "POST",
-                "accounts/" + c.accountIdOrEmpty() + "/storage/buckets",
-                true,
-                Map.of("name", name.trim().toLowerCase(Locale.ROOT)),
-                null,
-                Transport.newIdempotencyKey(),
-                Transport.RetryMode.IF_IDEMPOTENCY);
+        String path = "accounts/" + c.accountIdOrEmpty() + "/storage/buckets";
+        Map<String, String> body = Map.of("name", name.trim().toLowerCase(Locale.ROOT));
+        byte[] raw;
+        if (c.hasAccessKey()) {
+            raw = c.consoleSignedJson(
+                    "POST",
+                    path,
+                    c.accountIdOrEmpty(),
+                    body,
+                    null,
+                    Transport.newIdempotencyKey());
+        } else {
+            raw = c.consoleJson(
+                    "POST",
+                    path,
+                    true,
+                    body,
+                    null,
+                    Transport.newIdempotencyKey(),
+                    Transport.RetryMode.IF_IDEMPOTENCY);
+        }
         return Json.decode(raw, Bucket.class);
     }
 
     public void deleteBucket(String name) {
         c.ensureAccountId();
-        c.consoleJson(
-                "DELETE",
-                "accounts/" + c.accountIdOrEmpty() + "/storage/buckets/" + name.trim().toLowerCase(Locale.ROOT),
-                true, null, null, null, null);
+        String path =
+                "accounts/"
+                        + c.accountIdOrEmpty()
+                        + "/storage/buckets/"
+                        + name.trim().toLowerCase(Locale.ROOT);
+        if (c.hasAccessKey()) {
+            c.consoleSignedJson("DELETE", path, c.accountIdOrEmpty(), null, null, null);
+            return;
+        }
+        c.consoleJson("DELETE", path, true, null, null, null, null);
     }
 
     public ListObjectsResult listObjects(String bucket, ListObjectsOptions opts) {

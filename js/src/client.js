@@ -153,6 +153,10 @@ class HomeCloud {
     if (!this.accessToken) throw new NotLoggedInError();
   }
 
+  get hasAccessKey() {
+    return Boolean(this.accessKeyId && this.secretAccessKey);
+  }
+
   baseUrl(service) {
     if (this.dataPlaneBases[service]) return this.dataPlaneBases[service].replace(/\/$/, "");
     if (service === "so") return soUrl(this.apex);
@@ -295,6 +299,50 @@ class HomeCloud {
     }
     const headers = {};
     if (requireAuth && this.accessToken) headers.Authorization = `Bearer ${this.accessToken}`;
+    const init = { method, headers, signal: AbortSignal.timeout(this.timeoutMs) };
+    if (json !== undefined) {
+      headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(json);
+    }
+    const res = await fetch(url, init);
+    if (method === "DELETE" && res.status === 204) return null;
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        data = { raw: text };
+      }
+    }
+    if (!res.ok) {
+      throw errorFromStatus(res.status, {
+        detail: data && (data.detail !== undefined ? data.detail : data),
+        url: String(url),
+      });
+    }
+    return data;
+  }
+
+  async consoleSignedRequest(method, pathSeg, { json, params } = {}) {
+    this.requireAccessKey();
+    await this.ensureAccountId();
+    const base = (this.consoleBaseUrl || consoleUrl(this.apex)).replace(/\/$/, "");
+    const rel = String(pathSeg).replace(/^\/+/, "");
+    const url = new URL(`${base}/${rel}`);
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+      }
+    }
+    const headers = signRequestHeaders({
+      accessKeyId: this.accessKeyId,
+      secret: this.secretAccessKey,
+      method,
+      path: `/api/v1/${rel}`,
+      accountId: this.accountId,
+      sessionToken: this.sessionToken,
+    });
     const init = { method, headers, signal: AbortSignal.timeout(this.timeoutMs) };
     if (json !== undefined) {
       headers["Content-Type"] = "application/json";

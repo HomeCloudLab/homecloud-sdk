@@ -67,7 +67,16 @@ func (q *Queues) List(ctx context.Context, live bool) ([]Queue, error) {
 		v.Set("live", "true")
 		opts = append(opts, withQuery(v))
 	}
-	raw, err := q.c.consoleJSON(ctx, http.MethodGet, "accounts/"+q.c.accountID+"/queues", true, opts...)
+	path := "accounts/" + q.c.accountID + "/queues"
+	var (
+		raw json.RawMessage
+		err error
+	)
+	if q.c.hasAccessKey() {
+		raw, err = q.c.consoleSignedJSON(ctx, http.MethodGet, path, q.c.accountID, opts...)
+	} else {
+		raw, err = q.c.consoleJSON(ctx, http.MethodGet, path, true, opts...)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +87,16 @@ func (q *Queues) Get(ctx context.Context, name string) (*Queue, error) {
 	if err := q.c.ensureAccountID(ctx); err != nil {
 		return nil, err
 	}
-	raw, err := q.c.consoleJSON(ctx, http.MethodGet, "accounts/"+q.c.accountID+"/queues/"+url.PathEscape(name), true)
+	path := "accounts/" + q.c.accountID + "/queues/" + url.PathEscape(name)
+	var (
+		raw json.RawMessage
+		err error
+	)
+	if q.c.hasAccessKey() {
+		raw, err = q.c.consoleSignedJSON(ctx, http.MethodGet, path, q.c.accountID)
+	} else {
+		raw, err = q.c.consoleJSON(ctx, http.MethodGet, path, true)
+	}
 	if err != nil {
 		return nil, err
 	}

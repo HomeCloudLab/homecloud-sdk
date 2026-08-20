@@ -40,6 +40,15 @@ class SoAPI {
   }
 
   async listBuckets() {
+    await this._c.ensureAccountId();
+    if (this._c.hasAccessKey) {
+      const data = await this._c.dataPlaneRequest(
+        "so",
+        "GET",
+        `/${this._c.accountId}/buckets`
+      );
+      return data.items || [];
+    }
     this._c.requireConsole();
     const data = await this._c.consoleRequest(
       "GET",
@@ -49,18 +58,25 @@ class SoAPI {
   }
 
   async createBucket(name) {
+    await this._c.ensureAccountId();
+    const path = `accounts/${this._c.accountId}/storage/buckets`;
+    const body = { name: String(name).trim().toLowerCase() };
+    if (this._c.hasAccessKey) {
+      return this._c.consoleSignedRequest("POST", path, { json: body });
+    }
     this._c.requireConsole();
-    return this._c.consoleRequest("POST", `accounts/${this._c.accountId}/storage/buckets`, {
-      json: { name: String(name).trim().toLowerCase() },
-    });
+    return this._c.consoleRequest("POST", path, { json: body });
   }
 
   async deleteBucket(name) {
+    await this._c.ensureAccountId();
+    const path = `accounts/${this._c.accountId}/storage/buckets/${String(name).trim().toLowerCase()}`;
+    if (this._c.hasAccessKey) {
+      await this._c.consoleSignedRequest("DELETE", path);
+      return;
+    }
     this._c.requireConsole();
-    await this._c.consoleRequest(
-      "DELETE",
-      `accounts/${this._c.accountId}/storage/buckets/${String(name).trim().toLowerCase()}`
-    );
+    await this._c.consoleRequest("DELETE", path);
   }
 
   async listObjects(bucketName, { prefix = "", recursive = false, page = 1, pageSize = 100 } = {}) {

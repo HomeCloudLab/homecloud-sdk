@@ -80,10 +80,9 @@ def test_default_sdk_client_disables_interactive_mfa(
 
 
 def test_console_ops_require_jwt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """apps.list still needs console JWT; queues.list works with Access Key alone."""
     monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
     client = HomeCloudClient.from_credentials("HCAK1", "sec", apex="example.test")
-    with pytest.raises(NotLoggedInError):
-        client.queues.list()
     with pytest.raises(NotLoggedInError):
         client.apps.list()
     client.close()
@@ -137,6 +136,72 @@ def test_list_buckets_uses_access_key_no_jwt_required(
     assert items == [{"name": "media", "created_at": None}]
     assert captured["method"] == "GET"
     assert captured["path"] == "/acc-buckets/buckets"
+    client.close()
+
+
+def test_create_bucket_uses_console_signed_request_no_jwt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
+    captured: dict[str, str] = {}
+
+    class MockHttpClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self) -> None:
+            return None
+
+        def request(self, method: str, url: str, **kwargs):
+            request = httpx.Request(method, url, headers=kwargs.get("headers"))
+            captured["path"] = request.url.path
+            captured["method"] = request.method
+            captured["access_key"] = request.headers.get("X-Homecloud-Access-Key-Id", "")
+            captured["authorization"] = request.headers.get("Authorization", "")
+            if request.url.path == "/access-key/whoami":
+                return httpx.Response(200, json={"account_id": "acc-create"}, request=request)
+            return httpx.Response(200, json={"name": "assets", "id": "b1"}, request=request)
+
+    monkeypatch.setattr("homecloud_core.transport.httpx.Client", MockHttpClient)
+
+    client = HomeCloud(access_key="HCAKCREATE", secret_key="secret", apex="example.test")
+    result = client.so.create_bucket("assets")
+    assert result["name"] == "assets"
+    assert captured["method"] == "POST"
+    assert captured["path"].endswith("/accounts/acc-create/storage/buckets")
+    assert captured["access_key"] == "HCAKCREATE"
+    assert captured["authorization"] == ""
+    client.close()
+
+
+def test_queues_list_uses_console_signed_request_no_jwt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
+    captured: dict[str, str] = {}
+
+    class MockHttpClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self) -> None:
+            return None
+
+        def request(self, method: str, url: str, **kwargs):
+            request = httpx.Request(method, url, headers=kwargs.get("headers"))
+            captured["path"] = request.url.path
+            captured["authorization"] = request.headers.get("Authorization", "")
+            if request.url.path == "/access-key/whoami":
+                return httpx.Response(200, json={"account_id": "acc-q"}, request=request)
+            return httpx.Response(200, json={"items": [{"name": "jobs"}], "total": 1}, request=request)
+
+    monkeypatch.setattr("homecloud_core.transport.httpx.Client", MockHttpClient)
+
+    client = HomeCloud(access_key="HCAKQUEUES", secret_key="secret", apex="example.test")
+    items = client.queues.list()
+    assert items == [{"name": "jobs"}]
+    assert captured["path"].endswith("/accounts/acc-q/queues")
+    assert captured["authorization"] == ""
     client.close()
 
 

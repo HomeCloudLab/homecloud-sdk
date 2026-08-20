@@ -40,21 +40,26 @@ class QueuesAPI {
   }
 
   async list({ live = false } = {}) {
+    await this._c.ensureAccountId();
+    const path = `accounts/${this._c.accountId}/queues`;
+    const params = live ? { live: "true" } : undefined;
+    if (this._c.hasAccessKey) {
+      const data = await this._c.consoleSignedRequest("GET", path, { params });
+      return data.items || [];
+    }
     this._c.requireConsole();
-    const data = await this._c.consoleRequest(
-      "GET",
-      `accounts/${this._c.accountId}/queues`,
-      { params: live ? { live: "true" } : undefined }
-    );
+    const data = await this._c.consoleRequest("GET", path, { params });
     return data.items || [];
   }
 
   async get(queueName) {
+    await this._c.ensureAccountId();
+    const path = `accounts/${this._c.accountId}/queues/${encodeURIComponent(queueName)}`;
+    if (this._c.hasAccessKey) {
+      return this._c.consoleSignedRequest("GET", path);
+    }
     this._c.requireConsole();
-    return this._c.consoleRequest(
-      "GET",
-      `accounts/${this._c.accountId}/queues/${encodeURIComponent(queueName)}`
-    );
+    return this._c.consoleRequest("GET", path);
   }
 }
 
