@@ -79,12 +79,35 @@ def test_default_sdk_client_disables_interactive_mfa(
     client.close()
 
 
-def test_console_ops_require_jwt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """apps.list still needs console JWT; queues.list works with Access Key alone."""
+def test_console_ops_use_access_key_without_jwt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Management APIs (apps, billing, …) use Access Key SigV1 — same IAM as the user."""
     monkeypatch.setenv("HOMECLOUD_CONFIG_DIR", str(tmp_path))
+    captured: dict[str, str] = {}
+
+    class MockHttpClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self) -> None:
+            return None
+
+        def request(self, method: str, url: str, **kwargs):
+            request = httpx.Request(method, url, headers=kwargs.get("headers"))
+            captured["path"] = request.url.path
+            captured["authorization"] = request.headers.get("Authorization", "")
+            captured["access_key"] = request.headers.get("X-Homecloud-Access-Key-Id", "")
+            if request.url.path == "/access-key/whoami":
+                return httpx.Response(200, json={"account_id": "acc-apps"}, request=request)
+            return httpx.Response(200, json={"items": [{"name": "web"}], "total": 1}, request=request)
+
+    monkeypatch.setattr("homecloud_core.transport.httpx.Client", MockHttpClient)
+
     client = HomeCloudClient.from_credentials("HCAK1", "sec", apex="example.test")
-    with pytest.raises(NotLoggedInError):
-        client.apps.list()
+    items = client.apps.list()
+    assert items == [{"name": "web"}]
+    assert captured["path"].endswith("/accounts/acc-apps/applications")
+    assert captured["access_key"] == "HCAK1"
+    assert captured["authorization"] == ""
     client.close()
 
 

@@ -54,11 +54,11 @@ class AccountsAPI:
         self._ctx = ctx
 
     def list(self) -> list[dict[str, Any]]:
-        """Console JWT — interactive / CLI management."""
+        """List accounts — Access Key or console login."""
         return self._ctx.list_accounts()
 
     def switch(self, account_ref: str) -> None:
-        """Console JWT — interactive / CLI management."""
+        """Switch default account — Access Key or console login."""
         self._ctx.switch_account(account_ref)
 
 
@@ -249,7 +249,7 @@ class AppsAPI:
         self._ctx = ctx
 
     def list(self) -> list[dict[str, Any]]:
-        """Console JWT — interactive / CLI management."""
+        """List applications — Access Key SigV1 or console JWT (same IAM)."""
         self._ctx.require_console_session()
         account_id = self._ctx.account_id()
         data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/applications")

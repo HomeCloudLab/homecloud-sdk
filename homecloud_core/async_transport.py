@@ -49,6 +49,7 @@ class AsyncTransport:
         self.timeout = timeout
         self._http_client: httpx.AsyncClient | None = None
         self._http_lock = asyncio.Lock()
+        self._signed_account_id: str | None = None
 
     async def _http(self) -> httpx.AsyncClient:
         async with self._http_lock:
@@ -65,6 +66,12 @@ class AsyncTransport:
                 await self._http_client.aclose()
                 self._http_client = None
 
+    async def _account_id_for_signing(self) -> str:
+        if self._signed_account_id:
+            return self._signed_account_id
+        self._signed_account_id = await self.resolve_access_key_account_id()
+        return self._signed_account_id
+
     async def console_request(
         self,
         method: str,
@@ -74,6 +81,14 @@ class AsyncTransport:
         params: dict[str, Any] | None = None,
         require_auth: bool = True,
     ) -> Any:
+        if require_auth and self.access_key_id and self.secret_access_key:
+            return await self.console_signed_request(
+                method,
+                path,
+                await self._account_id_for_signing(),
+                json=json,
+                params=params,
+            )
         if require_auth and not self.access_token:
             raise NotLoggedInError("Not logged in. Run: homecloud login")
 
@@ -92,6 +107,40 @@ class AsyncTransport:
         params: dict[str, Any] | None = None,
         require_auth: bool = True,
     ) -> bytes:
+        if require_auth and self.access_key_id and self.secret_access_key:
+            rel = path.lstrip("/")
+            sign_path = f"/api/v1/{rel}"
+            require_access_key(self.access_key_id, self.secret_access_key)
+            assert self.access_key_id and self.secret_access_key
+            account_id = await self._account_id_for_signing()
+            headers = sign_request_headers(
+                access_key_id=self.access_key_id,
+                secret=self.secret_access_key,
+                method=method,
+                path=sign_path,
+                account_id=account_id,
+            )
+            url = console_request_url(self.apex, rel)
+            last_error: HomeCloudError | None = None
+            client = await self._http()
+            for attempt in range(MAX_RETRIES + 1):
+                try:
+                    response = await client.request(method, url, headers=headers, params=params)
+                except httpx.HTTPError as exc:
+                    if attempt == MAX_RETRIES:
+                        raise HomeCloudError(f"Request failed: {exc}") from exc
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                if response.status_code not in RETRY_STATUS or attempt == MAX_RETRIES:
+                    if response.is_success:
+                        return response.content
+                    raise error_from_failed_response(response)
+                last_error = HomeCloudError(
+                    f"Request failed ({response.status_code})",
+                    status_code=response.status_code,
+                )
+                await asyncio.sleep(0.5 * (attempt + 1))
+            raise last_error or HomeCloudError("Request failed")
         if require_auth and not self.access_token:
             raise NotLoggedInError("Not logged in. Run: homecloud login")
 

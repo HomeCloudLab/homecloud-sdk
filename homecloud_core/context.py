@@ -36,7 +36,8 @@ class CoreContext:
     """
     Shared runtime for SDK and CLI.
 
-    Programmatic path (default): Access Key ID + Secret → data-plane SigV1.
+    Programmatic path (default): Access Key ID + Secret → SigV1 (data plane and
+    console/management APIs). Same IAM as that user in the browser.
     Interactive path (CLI): optional console JWT via login / login_browser (+ MFA).
     """
 
@@ -138,12 +139,12 @@ class CoreContext:
             )
 
     def require_console_session(self) -> None:
-        if not self.has_console_session:
-            raise NotLoggedInError(
-                "This operation needs a console JWT (human session). "
-                "For automation use Access Key data-plane APIs instead. "
-                "Interactive: client.login(...) or homecloud login"
-            )
+        if self.has_console_session or self.has_access_key:
+            return
+        raise NotLoggedInError(
+            "This operation needs Access Key credentials or a console login. "
+            "Run: homecloud configure   or   homecloud login"
+        )
 
     def account_id(self) -> str:
         if self._account_id is not None:

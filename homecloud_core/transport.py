@@ -53,6 +53,7 @@ class Transport:
         self._mfa_resolver = mfa_resolver
         self._http_client: httpx.Client | None = None
         self._http_lock = threading.Lock()
+        self._signed_account_id: str | None = None
 
     def set_mfa_resolver(self, resolver: Any | None) -> None:
         self._mfa_resolver = resolver
@@ -72,6 +73,12 @@ class Transport:
                 self._http_client.close()
                 self._http_client = None
 
+    def _account_id_for_signing(self) -> str:
+        if self._signed_account_id:
+            return self._signed_account_id
+        self._signed_account_id = self.resolve_access_key_account_id()
+        return self._signed_account_id
+
     def console_request(
         self,
         method: str,
@@ -82,6 +89,16 @@ class Transport:
         require_auth: bool = True,
         _skip_mfa: bool = False,
     ) -> Any:
+        # Access Key is the user's programmatic identity (same IAM as console). Prefer
+        # SigV1 over a leftover JWT so stale `homecloud login` sessions cannot 401.
+        if require_auth and self.access_key_id and self.secret_access_key:
+            return self.console_signed_request(
+                method,
+                path,
+                self._account_id_for_signing(),
+                json=json,
+                params=params,
+            )
         if require_auth and not self.access_token:
             raise NotLoggedInError("Not logged in. Run: homecloud login")
 
@@ -135,6 +152,13 @@ class Transport:
         require_auth: bool = True,
     ) -> bytes:
         """Raw console response body (attachments, binary downloads)."""
+        if require_auth and self.access_key_id and self.secret_access_key:
+            return self.console_signed_request_bytes(
+                method,
+                path,
+                self._account_id_for_signing(),
+                params=params,
+            )
         if require_auth and not self.access_token:
             raise NotLoggedInError("Not logged in. Run: homecloud login")
 
