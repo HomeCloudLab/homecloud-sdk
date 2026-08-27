@@ -1149,3 +1149,99 @@ class AsyncFunctionsAPI:
             "GET", f"accounts/{account_id}/functions/{name}/invocations"
         )
         return data.get("items", [])
+
+
+class AsyncDomainsAPI:
+    """Custom domains, hosted DNS, records, and attachments (ADR-057)."""
+
+    def __init__(self, ctx: AsyncCoreContext) -> None:
+        self._ctx = ctx
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        self._ctx.require_console_session()
+        return await self._ctx.transport.console_request(method, path, **kwargs)
+
+    async def list(self) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/domains")
+        return data.get("items", [])
+
+    async def create(self, hostname: str, *, dns_mode: str = "external") -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/domains",
+            json={"hostname": hostname, "dns_mode": dns_mode},
+        )
+
+    async def get(self, ref: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("GET", f"accounts/{account_id}/domains/{ref}")
+
+    async def verify(self, domain_id: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("POST", f"accounts/{account_id}/domains/{domain_id}/verify")
+
+    async def delete(self, ref: str) -> None:
+        account_id = await self._ctx.account_id()
+        await self._request("DELETE", f"accounts/{account_id}/domains/{ref}")
+
+    async def list_records(self, domain_id: str) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/domains/{domain_id}/dns-records")
+        return data.get("items", [])
+
+    async def create_record(
+        self,
+        domain_id: str,
+        *,
+        record_type: str,
+        record: str,
+        host: str = "",
+        ttl: int = 300,
+        priority: int | None = None,
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        body: dict[str, Any] = {"type": record_type, "record": record, "host": host, "ttl": ttl}
+        if priority is not None:
+            body["priority"] = priority
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/domains/{domain_id}/dns-records",
+            json=body,
+        )
+
+    async def delete_record(self, domain_id: str, record_id: str) -> None:
+        account_id = await self._ctx.account_id()
+        await self._request("DELETE", f"accounts/{account_id}/domains/{domain_id}/dns-records/{record_id}")
+
+    async def export_zone(self, domain_id: str) -> str:
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/domains/{domain_id}/zone-file")
+        return str(data.get("zone_file") or "")
+
+    async def list_attachments(self) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/domain-attachments")
+        return data.get("items", [])
+
+    async def attach(
+        self,
+        domain_id: str,
+        *,
+        target_id: str,
+        target_type: str = "application",
+        host: str = "",
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/domain-attachments",
+            json={
+                "domain_id": domain_id,
+                "target_id": target_id,
+                "target_type": target_type,
+                "host": host,
+            },
+        )
+
