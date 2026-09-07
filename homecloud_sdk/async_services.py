@@ -1150,6 +1150,31 @@ class AsyncFunctionsAPI:
         )
         return data.get("items", [])
 
+    async def get_invocation(self, name: str, invocation_id: str) -> dict[str, Any]:
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        return await self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/functions/{name}/invocations/{invocation_id}",
+        )
+
+    async def stream_logs(
+        self,
+        name: str,
+        invocation_id: str,
+        *,
+        timeout_seconds: float = 120.0,
+    ):
+        self._ctx.require_console_session()
+        account_id = await self._ctx.account_id()
+        path = f"accounts/{account_id}/functions/{name}/invocations/{invocation_id}/logs/stream"
+        async for event in self._ctx.transport.console_sse_events(
+            path,
+            params={"timeout_seconds": timeout_seconds},
+            timeout=timeout_seconds + 30.0,
+        ):
+            yield event
+
 
 class AsyncDomainsAPI:
     """Custom domains, hosted DNS, records, and attachments (ADR-057)."""

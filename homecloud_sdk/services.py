@@ -1345,6 +1345,23 @@ class FunctionsAPI:
             f"accounts/{account_id}/functions/{name}/invocations/{invocation_id}",
         )
 
+    def stream_logs(
+        self,
+        name: str,
+        invocation_id: str,
+        *,
+        timeout_seconds: float = 120.0,
+    ):
+        """Yield live SSE events for an invocation (``status`` / ``log`` / ``logs`` / ``end`` / ``timeout``)."""
+        self._ctx.require_console_session()
+        account_id = self._ctx.account_id()
+        path = f"accounts/{account_id}/functions/{name}/invocations/{invocation_id}/logs/stream"
+        return self._ctx.transport.console_sse_events(
+            path,
+            params={"timeout_seconds": timeout_seconds},
+            timeout=timeout_seconds + 30.0,
+        )
+
 
 class DomainsAPI:
     """Custom domains, hosted DNS, records, and attachments (ADR-057)."""

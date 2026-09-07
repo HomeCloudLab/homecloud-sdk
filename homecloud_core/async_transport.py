@@ -99,6 +99,79 @@ class AsyncTransport:
         url = console_request_url(self.apex, path)
         return await self._request(method, url, headers=headers, json=json, params=params)
 
+    async def console_sse_events(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ):
+        """Yield parsed SSE ``data:`` JSON payloads (management plane)."""
+        import json as _json
+
+        rel = path.lstrip("/")
+        headers: dict[str, str] = {"Accept": "text/event-stream"}
+        if self.access_key_id and self.secret_access_key:
+            require_access_key(self.access_key_id, self.secret_access_key)
+            account_id = await self._account_id_for_signing()
+            sign_path = f"/api/v1/{rel}"
+            headers.update(
+                sign_request_headers(
+                    access_key_id=self.access_key_id,
+                    secret=self.secret_access_key,
+                    method="GET",
+                    path=sign_path,
+                    account_id=account_id,
+                )
+            )
+        elif self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+        else:
+            raise NotLoggedInError("Not logged in. Run: homecloud login")
+
+        url = console_request_url(self.apex, rel)
+        stream_timeout = httpx.Timeout(
+            None,
+            connect=10.0,
+            read=timeout if timeout is not None else max(self.timeout, 600.0),
+            write=30.0,
+            pool=10.0,
+        )
+        client = await self._http()
+        async with client.stream(
+            "GET", url, headers=headers, params=params, timeout=stream_timeout
+        ) as response:
+            if response.status_code >= 400:
+                body = await response.aread()
+                raise HomeCloudError(
+                    f"SSE request failed ({response.status_code}): {body[:500]!r}",
+                    status_code=response.status_code,
+                )
+            event_name = "message"
+            data_lines: list[str] = []
+            async for raw_line in response.aiter_lines():
+                line = raw_line
+                if line == "":
+                    if data_lines:
+                        payload = "\n".join(data_lines)
+                        data_lines = []
+                        try:
+                            obj = _json.loads(payload)
+                            if isinstance(obj, dict):
+                                if "type" not in obj and event_name and event_name != "message":
+                                    obj = {**obj, "type": event_name}
+                                yield obj
+                        except Exception:
+                            pass
+                    event_name = "message"
+                    continue
+                if line.startswith(":"):
+                    continue
+                if line.startswith("event:"):
+                    event_name = line[6:].strip() or "message"
+                elif line.startswith("data:"):
+                    data_lines.append(line[5:].lstrip())
+
     async def console_request_bytes(
         self,
         method: str,
