@@ -1142,13 +1142,39 @@ class AsyncFunctionsAPI:
             name, account_id, json=payload or {}
         )
 
-    async def logs(self, name: str) -> list[dict[str, Any]]:
+    async def logs(
+        self,
+        name: str,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+        status: str | None = None,
+        trigger: str | None = None,
+        from_time: str | None = None,
+        to_time: str | None = None,
+    ) -> dict[str, Any]:
+        """List invocations (management plane).
+
+        Returns ``{"items": [...], "next_cursor": str | None}``.
+        """
         self._ctx.require_console_session()
         account_id = await self._ctx.account_id()
-        data = await self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/functions/{name}/invocations"
+        params: dict[str, Any] = {"limit": limit}
+        if cursor:
+            params["cursor"] = cursor
+        if status:
+            params["status"] = status
+        if trigger:
+            params["trigger"] = trigger
+        if from_time:
+            params["from"] = from_time
+        if to_time:
+            params["to"] = to_time
+        return await self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/functions/{name}/invocations",
+            params=params,
         )
-        return data.get("items", [])
 
     async def get_invocation(self, name: str, invocation_id: str) -> dict[str, Any]:
         self._ctx.require_console_session()

@@ -1327,14 +1327,41 @@ class FunctionsAPI:
             json=payload or {},
         )
 
-    def logs(self, name: str) -> list[dict[str, Any]]:
-        """List recent invocations (management plane)."""
+    def logs(
+        self,
+        name: str,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+        status: str | None = None,
+        trigger: str | None = None,
+        from_time: str | None = None,
+        to_time: str | None = None,
+    ) -> dict[str, Any]:
+        """List invocations (management plane).
+
+        Returns ``{"items": [...], "next_cursor": str | None}``. List items are
+        metadata-only (no ``logs`` / ``response_payload``). Pass ``next_cursor``
+        back as ``cursor`` for the next page.
+        """
         self._ctx.require_console_session()
         account_id = self._ctx.account_id()
-        data = self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/functions/{name}/invocations"
+        params: dict[str, Any] = {"limit": limit}
+        if cursor:
+            params["cursor"] = cursor
+        if status:
+            params["status"] = status
+        if trigger:
+            params["trigger"] = trigger
+        if from_time:
+            params["from"] = from_time
+        if to_time:
+            params["to"] = to_time
+        return self._ctx.transport.console_request(
+            "GET",
+            f"accounts/{account_id}/functions/{name}/invocations",
+            params=params,
         )
-        return data.get("items", [])
 
     def get_invocation(self, name: str, invocation_id: str) -> dict[str, Any]:
         """Full invocation detail including logs (management plane)."""
