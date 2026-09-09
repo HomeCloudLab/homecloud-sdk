@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from homecloud_sdk.async_services import AsyncDomainsAPI
 from homecloud_sdk.services import DomainsAPI
@@ -54,31 +53,33 @@ def test_domains_list_create_records_attach() -> None:
     )
 
 
-@pytest.mark.asyncio
-async def test_async_domains_create_record_and_attach() -> None:
-    ctx = MagicMock()
-    ctx.account_id = AsyncMock(return_value="acc-1")
-    ctx.transport.console_request = AsyncMock(
-        side_effect=[
-            {"id": "d1", "dns_mode": "homecloud"},
-            {"id": "rec1", "type": "TXT"},
-            {"id": "a1", "fqdn": "www.example.com"},
-        ]
-    )
-    api = AsyncDomainsAPI(ctx)
-    created = await api.create("example.com", dns_mode="homecloud")
-    assert created["id"] == "d1"
-    record = await api.create_record("d1", record_type="TXT", record="ok", host="_verify")
-    assert record["type"] == "TXT"
-    attached = await api.attach("d1", target_id="fn-1", target_type="function", host="www")
-    assert attached["fqdn"] == "www.example.com"
-    ctx.transport.console_request.assert_any_call(
-        "POST",
-        "accounts/acc-1/domain-attachments",
-        json={
-            "domain_id": "d1",
-            "target_id": "fn-1",
-            "target_type": "function",
-            "host": "www",
-        },
-    )
+def test_async_domains_create_record_and_attach() -> None:
+    async def run() -> None:
+        ctx = MagicMock()
+        ctx.account_id = AsyncMock(return_value="acc-1")
+        ctx.transport.console_request = AsyncMock(
+            side_effect=[
+                {"id": "d1", "dns_mode": "homecloud"},
+                {"id": "rec1", "type": "TXT"},
+                {"id": "a1", "fqdn": "www.example.com"},
+            ]
+        )
+        api = AsyncDomainsAPI(ctx)
+        created = await api.create("example.com", dns_mode="homecloud")
+        assert created["id"] == "d1"
+        record = await api.create_record("d1", record_type="TXT", record="ok", host="_verify")
+        assert record["type"] == "TXT"
+        attached = await api.attach("d1", target_id="fn-1", target_type="function", host="www")
+        assert attached["fqdn"] == "www.example.com"
+        ctx.transport.console_request.assert_any_call(
+            "POST",
+            "accounts/acc-1/domain-attachments",
+            json={
+                "domain_id": "d1",
+                "target_id": "fn-1",
+                "target_type": "function",
+                "host": "www",
+            },
+        )
+
+    asyncio.run(run())
