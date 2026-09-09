@@ -1251,14 +1251,38 @@ class AsyncDomainsAPI:
         host: str = "",
         ttl: int = 300,
         priority: int | None = None,
+        mode: str | None = None,
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        body: dict[str, Any] = {"type": record_type, "record": record, "host": host, "ttl": ttl}
+        if priority is not None:
+            body["priority"] = priority
+        if mode:
+            body["mode"] = mode
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/domains/{domain_id}/dns-records",
+            json=body,
+        )
+
+    async def update_record(
+        self,
+        domain_id: str,
+        record_id: str,
+        *,
+        record_type: str,
+        record: str,
+        host: str = "",
+        ttl: int = 300,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         account_id = await self._ctx.account_id()
         body: dict[str, Any] = {"type": record_type, "record": record, "host": host, "ttl": ttl}
         if priority is not None:
             body["priority"] = priority
         return await self._request(
-            "POST",
-            f"accounts/{account_id}/domains/{domain_id}/dns-records",
+            "PATCH",
+            f"accounts/{account_id}/domains/{domain_id}/dns-records/{record_id}",
             json=body,
         )
 
@@ -1295,4 +1319,13 @@ class AsyncDomainsAPI:
                 "host": host,
             },
         )
+
+    async def detach(self, attachment_id: str) -> None:
+        account_id = await self._ctx.account_id()
+        await self._request("DELETE", f"accounts/{account_id}/domain-attachments/{attachment_id}")
+
+    async def list_hosts(self, domain_id: str) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/domains/{domain_id}/hosts")
+        return data.get("items", [])
 
