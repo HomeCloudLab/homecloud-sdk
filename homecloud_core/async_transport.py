@@ -487,7 +487,7 @@ class AsyncTransport:
         )
         url = f"{so_url(self.apex).rstrip('/')}{WHOAMI_PATH}"
         data = await self._request("GET", url, headers=headers)
-        account_id = data.get("account_id")
+        account_id = data.get("account_number") or data.get("account_id")
         if not account_id:
             raise HomeCloudError("Could not resolve account from Access Key")
         return str(account_id)

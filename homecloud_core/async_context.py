@@ -227,6 +227,7 @@ class AsyncCoreContext:
                 account
                 for account in accounts
                 if str(account.get("id")) == account_ref
+                or str(account.get("account_number")) == account_ref
                 or str(account.get("slug")) == account_ref
                 or str(account.get("name")) == account_ref
             ),
@@ -234,8 +235,8 @@ class AsyncCoreContext:
         )
         if not match:
             raise HomeCloudError(f"Account not found: {account_ref}")
-        remember_account(self.profile_name, str(match["id"]))
-        self._account_id = str(match["id"])
+        remember_account(self.profile_name, str(match.get("account_number") or match["id"]))
+        self._account_id = str(match.get("account_number") or match["id"])
 
     def config_summary(self) -> dict[str, Any]:
         from homecloud_core.config import credentials_path, load_credentials, mask_secret
