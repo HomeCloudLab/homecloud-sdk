@@ -1,0 +1,38 @@
+---
+description: REQUIRED — update sibling homecloud-docs in the same task as user-facing SDK changes
+alwaysApply: true
+---
+
+# Documentation sync (homecloud-docs)
+
+**Mandatory:** when you add or change **user-facing** SDK behavior, update the docs site in the **same task** — never defer.
+
+**Live site:** https://docs.web.holab.abrdns.com  
+**Docs repo:** sibling `homecloud-docs/` (MkDocs; auto-deploys on push to `main`)
+
+## This repo → docs
+
+| Change | Update docs under |
+|--------|-------------------|
+| Public API (Python / JS) | `docs/en/sdk/` (+ HE when present) |
+| Breaking API / env / behavior | New or updated page + `mkdocs.yml` nav if needed |
+
+## Conventions
+
+- **SO** not "storage" — URIs: `so://bucket/key`
+- **MQ**, **MDB**, **Secrets** — use service short names consistently
+- Code blocks, commands, JSON: always **LTR**
+
+## Workflow
+
+1. Implement here
+2. Edit `homecloud-docs/docs/en/sdk/...` (and HE when present)
+3. Run `mkdocs build --strict` in `homecloud-docs/`
+4. Ship docs with the code when the user asks to push
+5. Mention the docs update in your summary
+
+## Do not
+
+- Ship SDK changes without updating docs
+- Say "docs can be updated later"
+- Use `s3://` in new docs (docs use `so://`)
