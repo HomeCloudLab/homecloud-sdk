@@ -3,6 +3,7 @@ package homecloud
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 )
@@ -36,8 +37,53 @@ func (s *Secrets) Get(ctx context.Context, name string) (*Secret, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(sec.Value) == 0 && len(raw) > 0 {
-		sec.Value = json.RawMessage(raw)
+	if sec.Name == "" {
+		sec.Name = name
+	}
+	return &sec, nil
+}
+
+func (s *Secrets) GetValue(ctx context.Context, name string) (*Secret, error) {
+	if err := s.c.requireAccessKey(); err != nil {
+		return nil, err
+	}
+	if err := s.c.ensureAccountID(ctx); err != nil {
+		return nil, err
+	}
+	path := "/" + s.c.accountID + "/secrets/" + url.PathEscape(name) + "/value"
+	raw, err := s.c.dataPlaneJSON(ctx, "secrets", http.MethodGet, path, s.c.accountID)
+	if err != nil {
+		return nil, err
+	}
+	sec, err := decode[Secret](raw)
+	if err != nil {
+		return nil, err
+	}
+	if sec.Name == "" {
+		sec.Name = name
+	}
+	return &sec, nil
+}
+
+func (s *Secrets) PutValue(ctx context.Context, name string, values map[string]string) (*Secret, error) {
+	if err := s.c.requireAccessKey(); err != nil {
+		return nil, err
+	}
+	if err := s.c.ensureAccountID(ctx); err != nil {
+		return nil, err
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("homecloud: values must be a non-empty string map")
+	}
+	path := "/" + s.c.accountID + "/secrets/" + url.PathEscape(name) + "/value"
+	raw, err := s.c.dataPlaneJSON(ctx, "secrets", http.MethodPut, path, s.c.accountID,
+		withJSON(map[string]any{"values": values}))
+	if err != nil {
+		return nil, err
+	}
+	sec, err := decode[Secret](raw)
+	if err != nil {
+		return nil, err
 	}
 	if sec.Name == "" {
 		sec.Name = name

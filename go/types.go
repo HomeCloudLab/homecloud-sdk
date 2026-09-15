@@ -149,9 +149,11 @@ type EnableURLOptions struct {
 }
 
 type Secret struct {
-	Name    string          `json:"name,omitempty"`
-	Value   json.RawMessage `json:"value,omitempty"`
-	Version string          `json:"version,omitempty"`
+	Name    string            `json:"name,omitempty"`
+	Version any               `json:"version,omitempty"`
+	Values  map[string]string `json:"values,omitempty"`
+	// Legacy single-blob field from older clients; prefer Values via GetValue.
+	Value json.RawMessage `json:"value,omitempty"`
 }
 
 type Mailbox struct {

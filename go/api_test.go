@@ -97,17 +97,24 @@ func TestLoginStoresToken(t *testing.T) {
 	}
 }
 
-func TestSecretsGet(t *testing.T) {
+func TestSecretsGetValue(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"name": "db", "value": "s3cret"})
+		if r.URL.Path != "/acc/secrets/db/value" {
+			t.Fatalf("path %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name":    "db",
+			"version": 2,
+			"values":  map[string]string{"token": "s3cret"},
+		})
 	}))
 	defer srv.Close()
 	c := isolatedClient(t, WithAccessKey("HCAK", "s"), WithAccountID("acc"), WithDataPlaneBase("secrets", srv.URL))
-	sec, err := c.Secrets.Get(context.Background(), "db")
+	sec, err := c.Secrets.GetValue(context.Background(), "db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sec.Name != "db" {
-		t.Fatalf("%s", sec.Name)
+	if sec.Name != "db" || sec.Values["token"] != "s3cret" {
+		t.Fatalf("%+v", sec)
 	}
 }

@@ -6,7 +6,7 @@
 
   <groupId>com.homecloudlab</groupId>
   <artifactId>homecloud-sdk</artifactId>
-  <version>0.5.12</version>
+  <version>0.5.17</version>
   <packaging>jar</packaging>
 
   <name>HomeCloud Java SDK</name>

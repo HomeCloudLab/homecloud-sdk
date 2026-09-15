@@ -1155,6 +1155,31 @@ class SecretsAPI:
         data = self._ctx.transport.console_request("GET", f"accounts/{account_id}/secrets")
         return data.get("items", [])
 
+    def get_value(self, name: str) -> dict[str, Any]:
+        """Data plane — Access Key. Returns ``{name, version, values}``."""
+        self._ctx.require_access_key()
+        account_id = self._ctx.account_id()
+        path = f"/{account_id}/secrets/{name}/value"
+        return self._ctx.transport.data_plane_request("secrets", "GET", path, account_id)
+
+    def put_value(self, name: str, values: dict[str, str]) -> dict[str, Any]:
+        """Data plane — Access Key. Replaces the entire secret value map."""
+        self._ctx.require_access_key()
+        if not isinstance(values, dict) or not values:
+            raise HomeCloudError("values must be a non-empty string map")
+        for key, value in values.items():
+            if not isinstance(key, str) or not key or not isinstance(value, str):
+                raise HomeCloudError("values must be a flat map of string keys to string values")
+        account_id = self._ctx.account_id()
+        path = f"/{account_id}/secrets/{name}/value"
+        return self._ctx.transport.data_plane_request(
+            "secrets",
+            "PUT",
+            path,
+            account_id,
+            json={"values": values},
+        )
+
 
 class MailAPI:
     """HomeCloud Mail — JWT (console) or Access Key / mail STS via mailapi data plane."""
