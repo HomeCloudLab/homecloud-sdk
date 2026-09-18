@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type Secrets struct{ c *Client }
@@ -14,11 +15,60 @@ func (s *Secrets) List(ctx context.Context) ([]Secret, error) {
 	if err := s.c.ensureAccountID(ctx); err != nil {
 		return nil, err
 	}
-	raw, err := s.c.consoleJSON(ctx, http.MethodGet, "accounts/"+s.c.accountID+"/secrets", true)
+	path := "accounts/" + s.c.accountID + "/secrets"
+	var (
+		raw json.RawMessage
+		err error
+	)
+	if s.c.hasAccessKey() {
+		raw, err = s.c.consoleSignedJSON(ctx, http.MethodGet, path, s.c.accountID)
+	} else {
+		raw, err = s.c.consoleJSON(ctx, http.MethodGet, path, true)
+	}
 	if err != nil {
 		return nil, err
 	}
 	return itemsOf[Secret](raw)
+}
+
+// Create makes a secret shell (Access Key SigV1 preferred). Optional values seeds via PutValue.
+func (s *Secrets) Create(ctx context.Context, name string, description string, values map[string]string) (*Secret, error) {
+	if err := s.c.ensureAccountID(ctx); err != nil {
+		return nil, err
+	}
+	body := map[string]any{"name": name}
+	if description != "" {
+		body["description"] = description
+	}
+	path := "accounts/" + s.c.accountID + "/secrets"
+	opts := []func(*requestSpec){withJSON(body), withIdempotency(newIdempotencyKey())}
+	var (
+		raw json.RawMessage
+		err error
+	)
+	if s.c.hasAccessKey() {
+		raw, err = s.c.consoleSignedJSON(ctx, http.MethodPost, path, s.c.accountID, opts...)
+	} else {
+		raw, err = s.c.consoleJSON(ctx, http.MethodPost, path, true, opts...)
+	}
+	if err != nil {
+		return nil, err
+	}
+	sec, err := decode[Secret](raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(values) == 0 {
+		if sec.Name == "" {
+			sec.Name = name
+		}
+		return &sec, nil
+	}
+	logical := sec.Name
+	if logical == "" {
+		logical = name
+	}
+	return s.PutValue(ctx, logical, values, false)
 }
 
 func (s *Secrets) Get(ctx context.Context, name string) (*Secret, error) {
@@ -43,7 +93,7 @@ func (s *Secrets) Get(ctx context.Context, name string) (*Secret, error) {
 	return &sec, nil
 }
 
-func (s *Secrets) GetValue(ctx context.Context, name string) (*Secret, error) {
+func (s *Secrets) GetValue(ctx context.Context, name string, keys ...string) (*Secret, error) {
 	if err := s.c.requireAccessKey(); err != nil {
 		return nil, err
 	}
@@ -51,7 +101,22 @@ func (s *Secrets) GetValue(ctx context.Context, name string) (*Secret, error) {
 		return nil, err
 	}
 	path := "/" + s.c.accountID + "/secrets/" + url.PathEscape(name) + "/value"
-	raw, err := s.c.dataPlaneJSON(ctx, "secrets", http.MethodGet, path, s.c.accountID)
+	opts := []func(*requestSpec){}
+	if len(keys) > 0 {
+		q := url.Values{}
+		for _, key := range keys {
+			for _, part := range strings.Split(key, ",") {
+				part = strings.TrimSpace(part)
+				if part != "" {
+					q.Add("keys", part)
+				}
+			}
+		}
+		if len(q) > 0 {
+			opts = append(opts, withQuery(q))
+		}
+	}
+	raw, err := s.c.dataPlaneJSON(ctx, "secrets", http.MethodGet, path, s.c.accountID, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +130,7 @@ func (s *Secrets) GetValue(ctx context.Context, name string) (*Secret, error) {
 	return &sec, nil
 }
 
-func (s *Secrets) PutValue(ctx context.Context, name string, values map[string]string) (*Secret, error) {
+func (s *Secrets) PutValue(ctx context.Context, name string, values map[string]string, merge bool) (*Secret, error) {
 	if err := s.c.requireAccessKey(); err != nil {
 		return nil, err
 	}
@@ -76,8 +141,12 @@ func (s *Secrets) PutValue(ctx context.Context, name string, values map[string]s
 		return nil, fmt.Errorf("homecloud: values must be a non-empty string map")
 	}
 	path := "/" + s.c.accountID + "/secrets/" + url.PathEscape(name) + "/value"
+	body := map[string]any{"values": values}
+	if merge {
+		body["mode"] = "merge"
+	}
 	raw, err := s.c.dataPlaneJSON(ctx, "secrets", http.MethodPut, path, s.c.accountID,
-		withJSON(map[string]any{"values": values}))
+		withJSON(body))
 	if err != nil {
 		return nil, err
 	}

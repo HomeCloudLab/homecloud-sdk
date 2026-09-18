@@ -56,7 +56,7 @@ def serialize_secret_json(
     key_order: Iterable[str] | None = None,
 ) -> str:
     ordered = _order_dict(values, key_order)
-    return json.dumps(ordered, indent=2, ensure_ascii=False) + "\n"
+    return json.dumps(ordered, indent=2, ensure_ascii=False)
 
 
 def parse_secret_env(text: str) -> dict[str, str]:
@@ -83,7 +83,7 @@ def serialize_secret_env(
     key_order: Iterable[str] | None = None,
 ) -> str:
     lines = [f"{key}={_quote_env_value(value)}" for key, value in _order_items(values, key_order)]
-    return ("\n".join(lines) + "\n") if lines else ""
+    return "\n".join(lines)
 
 
 def parse_secret_yaml(text: str) -> dict[str, str]:
@@ -133,7 +133,7 @@ def serialize_secret_yaml(
     key_order: Iterable[str] | None = None,
 ) -> str:
     lines = [f"{key}: {_quote_yaml_scalar(value)}" for key, value in _order_items(values, key_order)]
-    return ("\n".join(lines) + "\n") if lines else ""
+    return "\n".join(lines)
 
 
 def _assert_flat_string_map(value: object, context: str) -> dict[str, str]:

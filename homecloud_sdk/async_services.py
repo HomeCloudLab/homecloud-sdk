@@ -20,11 +20,19 @@ from homecloud_core.so_paths import (
     sync_relative_local_path,
 )
 from homecloud_sdk.mq_helpers import build_mq_batch_entries
+from homecloud_sdk.secret_formats import (
+    SecretFormat,
+    parse_secret_format,
+    serialize_secret_format,
+)
 from homecloud_sdk.so_parallel import DEFAULT_SO_WORKERS
 from homecloud_sdk.services import (
     UploadBody,
     _as_binary_stream,
+    _assert_secret_values_map,
+    _resolve_put_payload,
     _resolve_upload_content_type,
+    _secrets_keys_params,
 )
 
 
@@ -216,23 +224,15 @@ class AsyncSoAPI:
         self._ctx = ctx
 
     async def list_buckets(self) -> list[dict[str, Any]]:
-        """List buckets — Access Key preferred (Identity Reset Phase 2, no JWT needed).
-
-        Falls back to the console JWT management endpoint when no Access Key is
-        configured (interactive console sessions without `homecloud configure`).
-        """
+        """List buckets — Access Key SigV1 preferred (management inventory; no JWT)."""
+        account_id = await self._ctx.account_id()
+        path = f"accounts/{account_id}/storage/buckets"
         if self._ctx.has_access_key:
-            account_id = await self._ctx.account_id()
-            data = await self._ctx.transport.data_plane_request(
-                "so", "GET", f"/{account_id}/buckets", account_id
-            )
+            data = await self._ctx.transport.console_signed_request("GET", path, account_id)
             return data.get("items", [])
         self._ctx.require_console_session()
-        account_id = await self._ctx.account_id()
         try:
-            data = await self._ctx.transport.console_request(
-                "GET", f"accounts/{account_id}/storage/buckets"
-            )
+            data = await self._ctx.transport.console_request("GET", path)
         except HomeCloudError as exc:
             if exc.status_code in {401, 403}:
                 raise HomeCloudError(
@@ -1047,36 +1047,97 @@ class AsyncSecretsAPI:
         self._ctx = ctx
 
     async def list(self) -> list[dict[str, Any]]:
-        self._ctx.require_console_session()
+        """List secrets metadata — Access Key SigV1 preferred; JWT fallback."""
         account_id = await self._ctx.account_id()
-        data = await self._ctx.transport.console_request(
-            "GET", f"accounts/{account_id}/secrets"
-        )
+        path = f"accounts/{account_id}/secrets"
+        if self._ctx.has_access_key:
+            data = await self._ctx.transport.console_signed_request("GET", path, account_id)
+            return data.get("items", [])
+        self._ctx.require_console_session()
+        data = await self._ctx.transport.console_request("GET", path)
         return data.get("items", [])
 
-    async def get_value(self, name: str) -> dict[str, Any]:
-        """Data plane — Access Key. Returns ``{name, version, values}``."""
-        self._ctx.require_access_key()
+    async def create(
+        self,
+        name: str,
+        values: dict[str, str] | str | None = None,
+        *,
+        description: str | None = None,
+        format: SecretFormat | None = None,
+        **fields: str,
+    ) -> dict[str, Any]:
+        """Create secret — Access Key SigV1 preferred; optional initial values."""
         account_id = await self._ctx.account_id()
-        path = f"/{account_id}/secrets/{name}/value"
-        return await self._ctx.transport.data_plane_request("secrets", "GET", path, account_id)
+        path = f"accounts/{account_id}/secrets"
+        body: dict[str, Any] = {"name": name}
+        if description is not None:
+            body["description"] = description
+        if self._ctx.has_access_key:
+            created = await self._ctx.transport.console_signed_request(
+                "POST", path, account_id, json=body
+            )
+        else:
+            self._ctx.require_console_session()
+            created = await self._ctx.transport.console_request("POST", path, json=body)
+        if values is None and not fields:
+            return created
+        logical = str(created.get("name") or name).strip().lower()
+        payload = _resolve_put_payload(values, format=format, fields=fields)
+        if self._ctx.has_access_key:
+            return await self.put_value(logical, payload)
+        return await self._ctx.transport.console_request(
+            "PUT",
+            f"accounts/{account_id}/secrets/{logical}/value",
+            json={"values": payload},
+        )
 
-    async def put_value(self, name: str, values: dict[str, str]) -> dict[str, Any]:
-        """Data plane — Access Key. Replaces the entire secret value map."""
+    async def get_value(
+        self,
+        name: str,
+        *keys: str,
+        format: SecretFormat | None = None,
+    ) -> dict[str, Any] | str:
+        """Data plane — Access Key. Full map, filtered keys, or serialized text."""
         self._ctx.require_access_key()
-        if not isinstance(values, dict) or not values:
-            raise HomeCloudError("values must be a non-empty string map")
-        for key, value in values.items():
-            if not isinstance(key, str) or not key or not isinstance(value, str):
-                raise HomeCloudError("values must be a flat map of string keys to string values")
         account_id = await self._ctx.account_id()
         path = f"/{account_id}/secrets/{name}/value"
+        result = await self._ctx.transport.data_plane_request(
+            "secrets",
+            "GET",
+            path,
+            account_id,
+            params=_secrets_keys_params(keys or None),
+        )
+        if format is None:
+            return result
+        values = result.get("values") or {}
+        if not isinstance(values, dict):
+            raise HomeCloudError("unexpected secrets get response: missing values map")
+        return serialize_secret_format(format, {str(k): str(v) for k, v in values.items()})
+
+    async def put_value(
+        self,
+        name: str,
+        values: dict[str, str] | str | None = None,
+        *,
+        merge: bool = False,
+        format: SecretFormat | None = None,
+        **fields: str,
+    ) -> dict[str, Any]:
+        """Data plane — Access Key. Dict, field kwargs, or codec string."""
+        self._ctx.require_access_key()
+        payload = _resolve_put_payload(values, format=format, fields=fields)
+        account_id = await self._ctx.account_id()
+        path = f"/{account_id}/secrets/{name}/value"
+        body: dict[str, Any] = {"values": payload}
+        if merge:
+            body["mode"] = "merge"
         return await self._ctx.transport.data_plane_request(
             "secrets",
             "PUT",
             path,
             account_id,
-            json={"values": values},
+            json=body,
         )
 
 

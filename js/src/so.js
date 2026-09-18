@@ -41,19 +41,13 @@ class SoAPI {
 
   async listBuckets() {
     await this._c.ensureAccountId();
+    const path = `accounts/${this._c.accountId}/storage/buckets`;
     if (this._c.hasAccessKey) {
-      const data = await this._c.dataPlaneRequest(
-        "so",
-        "GET",
-        `/${this._c.accountId}/buckets`
-      );
+      const data = await this._c.consoleSignedRequest("GET", path);
       return data.items || [];
     }
     this._c.requireConsole();
-    const data = await this._c.consoleRequest(
-      "GET",
-      `accounts/${this._c.accountId}/storage/buckets`
-    );
+    const data = await this._c.consoleRequest("GET", path);
     return data.items || [];
   }
 

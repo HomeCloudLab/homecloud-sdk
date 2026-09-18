@@ -121,7 +121,7 @@ def test_list_buckets_without_credentials_requires_login(
     monkeypatch.delenv("HOMECLOUD_SECRET_ACCESS_KEY", raising=False)
     monkeypatch.delenv("HC_SECRET_ACCESS_KEY", raising=False)
     client = HomeCloudClient()
-    with pytest.raises(NotLoggedInError):
+    with pytest.raises((NotLoggedInError, NotConfiguredError)):
         client.so.list_buckets()
     client.close()
 
@@ -158,7 +158,7 @@ def test_list_buckets_uses_access_key_no_jwt_required(
     items = client.so.list_buckets()
     assert items == [{"name": "media", "created_at": None}]
     assert captured["method"] == "GET"
-    assert captured["path"] == "/acc-buckets/buckets"
+    assert captured["path"].endswith("/accounts/acc-buckets/storage/buckets")
     client.close()
 
 

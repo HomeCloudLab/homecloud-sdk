@@ -15,23 +15,24 @@ import (
 type SO struct{ c *Client }
 
 func (s *SO) ListBuckets(ctx context.Context) ([]Bucket, error) {
-	if s.c.hasAccessKey() {
-		if err := s.c.ensureAccountID(ctx); err != nil {
-			return nil, err
-		}
-		raw, err := s.c.dataPlaneJSON(ctx, "so", http.MethodGet, "/"+s.c.accountID+"/buckets", s.c.accountID)
-		if err != nil {
-			return nil, err
-		}
-		return itemsOf[Bucket](raw)
-	}
-	if err := s.c.requireConsole(); err != nil {
-		return nil, err
-	}
 	if err := s.c.ensureAccountID(ctx); err != nil {
 		return nil, err
 	}
-	raw, err := s.c.consoleJSON(ctx, http.MethodGet, "accounts/"+s.c.accountID+"/storage/buckets", true)
+	path := "accounts/" + s.c.accountID + "/storage/buckets"
+	var (
+		raw json.RawMessage
+		err error
+	)
+	if s.c.hasAccessKey() {
+		// Management inventory (resources ownership). DP MinIO scan only sees legacy
+		// {short_id}-* physical names and returns empty for modern unprefixed buckets.
+		raw, err = s.c.consoleSignedJSON(ctx, http.MethodGet, path, s.c.accountID)
+	} else {
+		if err := s.c.requireConsole(); err != nil {
+			return nil, err
+		}
+		raw, err = s.c.consoleJSON(ctx, http.MethodGet, path, true)
+	}
 	if err != nil {
 		return nil, err
 	}

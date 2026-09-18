@@ -19,6 +19,12 @@ from homecloud_sdk.secret_formats import (
 SAMPLE = {"API_KEY": "abc", "DATABASE_URL": "postgres://x"}
 
 
+def test_env_accepts_no_trailing_newline() -> None:
+    assert parse_secret_env("API_KEY=x") == {"API_KEY": "x"}
+    assert serialize_secret_env({"API_KEY": "x"}) == "API_KEY=x"
+    assert not serialize_secret_env({"API_KEY": "x"}).endswith("\n")
+
+
 @pytest.mark.parametrize("fmt", ["json", "env", "yaml"])
 def test_round_trip(fmt: str) -> None:
     text = serialize_secret_format(fmt, SAMPLE)  # type: ignore[arg-type]
