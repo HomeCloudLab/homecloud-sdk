@@ -1495,6 +1495,29 @@ class AsyncContainersAPI:
         account_id = await self._ctx.account_id()
         return await self._request("DELETE", f"accounts/{account_id}/containers/services/{service_id}")
 
+    async def force_redeploy(self, service_id: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/containers/services/{service_id}/force-redeploy",
+            json={},
+        )
+
+    async def rollback(self, service_id: str, revision_id: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/containers/services/{service_id}/rollback",
+            json={"revision_id": revision_id},
+        )
+
+    async def list_deployments(self, service_id: str) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request(
+            "GET", f"accounts/{account_id}/containers/services/{service_id}/deployments"
+        )
+        return data.get("items", [])
+
     async def list_revisions(self, service_id: str) -> list[dict[str, Any]]:
         account_id = await self._ctx.account_id()
         data = await self._request(

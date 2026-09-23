@@ -1759,6 +1759,29 @@ class ContainersAPI:
         account_id = self._ctx.account_id()
         return self._request("DELETE", f"accounts/{account_id}/containers/services/{service_id}")
 
+    def force_redeploy(self, service_id: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/containers/services/{service_id}/force-redeploy",
+            json={},
+        )
+
+    def rollback(self, service_id: str, revision_id: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/containers/services/{service_id}/rollback",
+            json={"revision_id": revision_id},
+        )
+
+    def list_deployments(self, service_id: str) -> list[dict[str, Any]]:
+        account_id = self._ctx.account_id()
+        data = self._request(
+            "GET", f"accounts/{account_id}/containers/services/{service_id}/deployments"
+        )
+        return data.get("items", [])
+
     def list_revisions(self, service_id: str) -> list[dict[str, Any]]:
         account_id = self._ctx.account_id()
         data = self._request(
