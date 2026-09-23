@@ -11,6 +11,7 @@ from homecloud_core.errors import HomeCloudError
 from homecloud_sdk.services import (
     AccountsAPI,
     AppsAPI,
+    ContainersAPI,
     DomainsAPI,
     FunctionsAPI,
     MailAPI,
@@ -264,6 +265,10 @@ class HomeCloudClient:
     @property
     def domains(self) -> DomainsAPI:
         return DomainsAPI(self._ctx)
+
+    @property
+    def containers(self) -> ContainersAPI:
+        return ContainersAPI(self._ctx)
 
     @property
     def usage(self) -> UsageAPI:

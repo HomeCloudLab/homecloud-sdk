@@ -45,6 +45,12 @@ def mail_api_url(apex: str | None = None) -> str:
     return f"https://mailapi.{host}"
 
 
+def compute_url(apex: str | None = None) -> str:
+    """Compute control plane (machines + Containers) — JWT Bearer like console UI."""
+    host = apex or platform_apex()
+    return f"https://compute.{host}/api/v1"
+
+
 def function_url(name: str, apex: str | None = None) -> str:
     """Data-plane Function URL: https://{name}.func.{apex}."""
     host = apex or platform_apex()

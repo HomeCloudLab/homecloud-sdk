@@ -1415,3 +1415,119 @@ class AsyncDomainsAPI:
         data = await self._request("GET", f"accounts/{account_id}/domains/{domain_id}/hosts")
         return data.get("items", [])
 
+
+class AsyncContainersAPI:
+    """Managed Containers (L2) on ``compute.{apex}`` — console JWT required."""
+
+    def __init__(self, ctx: AsyncCoreContext) -> None:
+        self._ctx = ctx
+
+    def _require_jwt(self) -> None:
+        if not self._ctx.has_console_session:
+            from homecloud_core.errors import NotLoggedInError
+
+            raise NotLoggedInError(
+                "Containers need a console login (JWT). Run: homecloud login"
+            )
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        self._require_jwt()
+        return await self._ctx.transport.compute_request(method, path, **kwargs)
+
+    async def list_services(self) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/containers/services")
+        return data.get("items", [])
+
+    async def create_service(
+        self,
+        *,
+        name: str,
+        region_code: str,
+        image: str,
+        cpu_milli: int = 250,
+        memory_mib: int = 512,
+        port: int | None = 80,
+        env: list[dict[str, Any]] | None = None,
+        secret_refs: list[str] | None = None,
+        command: list[str] | None = None,
+        entrypoint: list[str] | None = None,
+        health: dict[str, Any] | None = None,
+        desired_count: int = 1,
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        body: dict[str, Any] = {
+            "name": name,
+            "region_code": region_code,
+            "image": image,
+            "cpu_milli": cpu_milli,
+            "memory_mib": memory_mib,
+            "desired_count": desired_count,
+        }
+        if port is not None:
+            body["port"] = port
+        if env is not None:
+            body["env"] = env
+        if secret_refs is not None:
+            body["secret_refs"] = secret_refs
+        if command is not None:
+            body["command"] = command
+        if entrypoint is not None:
+            body["entrypoint"] = entrypoint
+        if health is not None:
+            body["health"] = health
+        return await self._request("POST", f"accounts/{account_id}/containers/services", json=body)
+
+    async def get_service(self, service_id: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("GET", f"accounts/{account_id}/containers/services/{service_id}")
+
+    async def update_service(self, service_id: str, **fields: Any) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        body = {k: v for k, v in fields.items() if v is not None}
+        return await self._request(
+            "PATCH",
+            f"accounts/{account_id}/containers/services/{service_id}",
+            json=body,
+        )
+
+    async def delete_service(self, service_id: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("DELETE", f"accounts/{account_id}/containers/services/{service_id}")
+
+    async def list_revisions(self, service_id: str) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request(
+            "GET", f"accounts/{account_id}/containers/services/{service_id}/revisions"
+        )
+        return data.get("items", [])
+
+    async def list_tasks(self, service_id: str) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request(
+            "GET", f"accounts/{account_id}/containers/services/{service_id}/tasks"
+        )
+        return data.get("items", [])
+
+    async def get_task(self, task_id: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("GET", f"accounts/{account_id}/containers/tasks/{task_id}")
+
+    async def task_logs(
+        self,
+        task_id: str,
+        *,
+        limit: int = 200,
+        since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        params: dict[str, Any] = {"limit": limit}
+        if since:
+            params["since"] = since
+        data = await self._request(
+            "GET",
+            f"accounts/{account_id}/containers/tasks/{task_id}/logs",
+            params=params,
+        )
+        return data.get("items", [])
+

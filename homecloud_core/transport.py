@@ -143,6 +143,29 @@ class Transport:
                 retry=retry,
             )
 
+    def compute_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Compute host (``compute.{apex}``) with console JWT.
+
+        Access Key SigV1 is not yet accepted on Compute (platform identity only
+        forwards ``Authorization``). Use ``homecloud login`` for Containers/Compute APIs.
+        """
+        if not self.access_token:
+            raise NotLoggedInError(
+                "Containers/Compute need a console login (JWT). Run: homecloud login"
+            )
+        from homecloud_core.defaults import compute_url
+
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        url = urljoin(compute_url(self.apex).rstrip("/") + "/", path.lstrip("/"))
+        return self._request(method, url, headers=headers, json=json, params=params)
+
     def console_request_bytes(
         self,
         method: str,

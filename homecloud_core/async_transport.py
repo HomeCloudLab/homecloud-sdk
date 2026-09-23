@@ -99,6 +99,26 @@ class AsyncTransport:
         url = console_request_url(self.apex, path)
         return await self._request(method, url, headers=headers, json=json, params=params)
 
+    async def compute_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Compute host (``compute.{apex}``) with console JWT."""
+        if not self.access_token:
+            raise NotLoggedInError(
+                "Containers/Compute need a console login (JWT). Run: homecloud login"
+            )
+        from homecloud_core.defaults import compute_url
+        from urllib.parse import urljoin
+
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        url = urljoin(compute_url(self.apex).rstrip("/") + "/", path.lstrip("/"))
+        return await self._request(method, url, headers=headers, json=json, params=params)
+
     async def console_sse_events(
         self,
         path: str,
