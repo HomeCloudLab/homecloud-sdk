@@ -38,6 +38,8 @@ export declare class HomeCloud {
   apps: any;
   queues: any;
   functions: any;
+  tasks: any;
+  diagrams: any;
   accountId: string | null;
   accessToken: string | null;
   constructor(opts?: Record<string, unknown>);

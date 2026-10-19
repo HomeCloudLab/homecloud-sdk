@@ -12,6 +12,7 @@ from homecloud_sdk.services import (
     AccountsAPI,
     AppsAPI,
     ContainersAPI,
+    DiagramsAPI,
     DomainsAPI,
     FunctionsAPI,
     MailAPI,
@@ -22,6 +23,7 @@ from homecloud_sdk.services import (
     SoAPI,
     BillingAPI,
     MonitoringAPI,
+    TasksAPI,
     UsageAPI,
 )
 
@@ -269,6 +271,14 @@ class HomeCloudClient:
     @property
     def containers(self) -> ContainersAPI:
         return ContainersAPI(self._ctx)
+
+    @property
+    def tasks(self) -> TasksAPI:
+        return TasksAPI(self._ctx)
+
+    @property
+    def diagrams(self) -> DiagramsAPI:
+        return DiagramsAPI(self._ctx)
 
     @property
     def usage(self) -> UsageAPI:

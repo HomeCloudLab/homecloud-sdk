@@ -1554,3 +1554,336 @@ class AsyncContainersAPI:
         )
         return data.get("items", [])
 
+class AsyncTasksAPI:
+    """Async Tasks — mirrors ``TasksAPI`` (console-parity management plane)."""
+
+    def __init__(self, ctx: AsyncCoreContext) -> None:
+        self._ctx = ctx
+        self._actor_user_id: str | None = None
+        self._people_cache: list[dict[str, Any]] | None = None
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        account_id = await self._ctx.account_id()
+        if self._ctx.has_access_key:
+            return await self._ctx.transport.console_signed_request(
+                method, path, account_id, **kwargs
+            )
+        self._ctx.require_console_session()
+        return await self._ctx.transport.console_request(method, path, **kwargs)
+
+    async def actor(self) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        if self._ctx.has_access_key:
+            return await self._ctx.transport.console_signed_request(
+                "GET", "access-key/whoami", account_id
+            )
+        self._ctx.require_console_session()
+        return await self._ctx.transport.console_request("GET", "me")
+
+    async def actor_user_id(self) -> str:
+        if self._actor_user_id:
+            return self._actor_user_id
+        info = await self.actor()
+        uid = info.get("id") or info.get("principal_id")
+        if not uid:
+            raise HomeCloudError(
+                "Could not resolve current user id — use homecloud login "
+                "or a user-bound Access Key"
+            )
+        self._actor_user_id = str(uid)
+        return self._actor_user_id
+
+    async def people(self) -> list[dict[str, Any]]:
+        if self._people_cache is not None:
+            return self._people_cache
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/tasks/people")
+        self._people_cache = data.get("items", [])
+        return self._people_cache
+
+    async def resolve_user(self, ref: str) -> str:
+        from homecloud_sdk.services import _looks_like_uuid
+
+        raw = (ref or "").strip().lstrip("@")
+        if not raw:
+            raise HomeCloudError("empty user reference")
+        if raw.lower() == "me":
+            return await self.actor_user_id()
+        if _looks_like_uuid(raw):
+            return raw
+        matches = [
+            p
+            for p in await self.people()
+            if str(p.get("username") or "").lower() == raw.lower()
+        ]
+        if not matches:
+            raise HomeCloudError(f"Unknown user: {ref}")
+        return str(matches[0]["id"])
+
+    async def list(
+        self,
+        *,
+        type: str | None = None,
+        status: str | None = None,
+        assignee: str | None = None,
+        watcher: str | None = None,
+        label: str | None = None,
+        project_id: str | None = None,
+        q: str | None = None,
+        due: str | None = None,
+        archived: bool = False,
+    ) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        params: dict[str, Any] = {"archived": archived}
+        if type is not None:
+            params["type"] = type
+        if status is not None:
+            params["status"] = status
+        if assignee is not None:
+            params["assignee"] = assignee
+        if watcher is not None:
+            params["watcher"] = watcher
+        if label is not None:
+            params["label"] = label
+        if project_id is not None:
+            params["project_id"] = project_id
+        if q is not None:
+            params["q"] = q
+        if due is not None:
+            params["due"] = due
+        data = await self._request(
+            "GET", f"accounts/{account_id}/tasks/items", params=params
+        )
+        return data.get("items", [])
+
+    async def search(self, query: str = "", **filters: Any) -> list[dict[str, Any]]:
+        return await self.list(q=query or None, **filters)
+
+    async def get(self, key: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("GET", f"accounts/{account_id}/tasks/items/{key}")
+
+    async def create(
+        self,
+        title: str,
+        *,
+        type: str = "task",
+        description: str | None = None,
+        description_format: str | None = None,
+        assignee_user_id: str | None = None,
+        assignee_user_ids: list[str] | None = None,
+        assignees: list[str] | None = None,
+        due_at: str | None = None,
+        project_id: str | None = None,
+        priority: str | None = None,
+        severity: str | None = None,
+        services: list[str] | None = None,
+        label_names: list[str] | None = None,
+    ) -> dict[str, Any]:
+        from homecloud_sdk.services import _looks_like_uuid
+
+        account_id = await self._ctx.account_id()
+        body: dict[str, Any] = {"title": title, "type": type}
+        if description is not None:
+            body["description"] = description
+        if description_format is not None:
+            body["description_format"] = description_format
+        ids = list(assignee_user_ids or [])
+        if assignees:
+            for ref in assignees:
+                ids.append(await self.resolve_user(ref))
+        if assignee_user_id is not None:
+            body["assignee_user_id"] = (
+                await self.resolve_user(assignee_user_id)
+                if not _looks_like_uuid(assignee_user_id)
+                else assignee_user_id
+            )
+        if ids:
+            resolved: list[str] = []
+            for i in ids:
+                resolved.append(await self.resolve_user(i) if not _looks_like_uuid(i) else i)
+            body["assignee_user_ids"] = resolved
+        if due_at is not None:
+            body["due_at"] = due_at
+        if project_id is not None:
+            body["project_id"] = project_id
+        if priority is not None:
+            body["priority"] = priority
+        if severity is not None:
+            body["severity"] = severity
+        if services is not None:
+            body["services"] = services
+        if label_names is not None:
+            body["label_names"] = label_names
+        return await self._request(
+            "POST", f"accounts/{account_id}/tasks/items", json=body
+        )
+
+    async def update(self, key: str, **fields: Any) -> dict[str, Any]:
+        from homecloud_sdk.services import _looks_like_uuid
+
+        account_id = await self._ctx.account_id()
+        body = dict(fields)
+        if "assignees" in body:
+            refs = body.pop("assignees")
+            if refs is not None:
+                body["assignee_user_ids"] = [await self.resolve_user(r) for r in refs]
+        if body.get("assignee_user_id") and not _looks_like_uuid(str(body["assignee_user_id"])):
+            body["assignee_user_id"] = await self.resolve_user(str(body["assignee_user_id"]))
+        payload = {k: v for k, v in body.items() if v is not None or str(k).startswith("clear_")}
+        return await self._request(
+            "PATCH", f"accounts/{account_id}/tasks/items/{key}", json=payload
+        )
+
+    async def assign(self, key: str, *users: str) -> dict[str, Any]:
+        if not users:
+            raise HomeCloudError("assign requires at least one user")
+        return await self.update(key, assignees=list(users))
+
+    async def assign_me(self, key: str, *, status: str | None = None) -> dict[str, Any]:
+        fields: dict[str, Any] = {"assignees": ["me"]}
+        if status is not None:
+            fields["status"] = status
+        return await self.update(key, **fields)
+
+    async def unassign(self, key: str) -> dict[str, Any]:
+        return await self.update(key, clear_assignee=True)
+
+    async def archive(self, key: str, *, cancel: bool = False) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/archive",
+            json={"cancel": cancel},
+        )
+
+    async def restore(self, key: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST", f"accounts/{account_id}/tasks/items/{key}/restore", json={}
+        )
+
+    async def delete(self, key: str) -> None:
+        account_id = await self._ctx.account_id()
+        await self._request("DELETE", f"accounts/{account_id}/tasks/items/{key}")
+
+    async def activity(self, key: str) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request(
+            "GET", f"accounts/{account_id}/tasks/items/{key}/activity"
+        )
+        return data.get("items", [])
+
+    async def comment(
+        self, key: str, body: str, *, quote_comment_id: str | None = None
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        payload: dict[str, Any] = {"body": body}
+        if quote_comment_id is not None:
+            payload["quote_comment_id"] = quote_comment_id
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/comments",
+            json=payload,
+        )
+
+    async def watch(self, key: str, user: str = "me") -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/watchers",
+            json={"user_id": await self.resolve_user(user)},
+        )
+
+    async def unwatch(self, key: str, user: str = "me") -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        uid = await self.resolve_user(user)
+        return await self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/watchers/{uid}",
+        )
+
+    async def add_label(
+        self, key: str, name: str, *, color: str | None = None
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        body: dict[str, Any] = {"name": name}
+        if color is not None:
+            body["color"] = color
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/labels",
+            json=body,
+        )
+
+    async def labels(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request(
+            "GET",
+            f"accounts/{account_id}/tasks/labels",
+            params={"include_archived": include_archived},
+        )
+        return data.get("items", [])
+
+
+class AsyncDiagramsAPI:
+    """Account Diagrams — management plane (user JWT or user-bound Access Key SigV1)."""
+
+    def __init__(self, ctx: AsyncCoreContext) -> None:
+        self._ctx = ctx
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        account_id = await self._ctx.account_id()
+        if self._ctx.has_access_key:
+            return await self._ctx.transport.console_signed_request(
+                method, path, account_id, **kwargs
+            )
+        self._ctx.require_console_session()
+        return await self._ctx.transport.console_request(method, path, **kwargs)
+
+    async def list(self) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request("GET", f"accounts/{account_id}/diagrams")
+        return data.get("items", [])
+
+    async def get(self, diagram_id: str) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("GET", f"accounts/{account_id}/diagrams/{diagram_id}")
+
+    async def create(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        document: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        body: dict[str, Any] = {"name": name}
+        if description is not None:
+            body["description"] = description
+        if document is not None:
+            body["document"] = document
+        return await self._request("POST", f"accounts/{account_id}/diagrams", json=body)
+
+    async def update(
+        self,
+        diagram_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        document: dict[str, Any] | None = None,
+        revision: int | None = None,
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        body: dict[str, Any] = {}
+        if name is not None:
+            body["name"] = name
+        if description is not None:
+            body["description"] = description
+        if document is not None:
+            body["document"] = document
+        if revision is not None:
+            body["revision"] = revision
+        return await self._request(
+            "PATCH", f"accounts/{account_id}/diagrams/{diagram_id}", json=body
+        )

@@ -11,6 +11,7 @@ from homecloud_sdk.async_services import (
     AsyncAccountsAPI,
     AsyncAppsAPI,
     AsyncContainersAPI,
+    AsyncDiagramsAPI,
     AsyncDomainsAPI,
     AsyncFunctionsAPI,
     AsyncMailAPI,
@@ -18,6 +19,7 @@ from homecloud_sdk.async_services import (
     AsyncQueuesAPI,
     AsyncSecretsAPI,
     AsyncSoAPI,
+    AsyncTasksAPI,
 )
 
 
@@ -135,6 +137,14 @@ class AsyncHomeCloudClient:
     @property
     def containers(self) -> AsyncContainersAPI:
         return AsyncContainersAPI(self._ctx)
+
+    @property
+    def tasks(self) -> AsyncTasksAPI:
+        return AsyncTasksAPI(self._ctx)
+
+    @property
+    def diagrams(self) -> AsyncDiagramsAPI:
+        return AsyncDiagramsAPI(self._ctx)
 
     async def login(
         self, account: str, username: str, password: str, *, mfa_code: str | None = None

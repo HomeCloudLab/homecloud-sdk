@@ -1819,6 +1819,468 @@ class ContainersAPI:
         return data.get("items", [])
 
 
+class TasksAPI:
+    """Account Tasks — full management plane (console-parity).
+
+    Auth: user JWT (``homecloud login``) or **user-bound** Access Key SigV1.
+    Service-account keys cannot act as a user.
+
+    Smart search uses the same ``q`` grammar as the console:
+    free text, ``@user``, ``&label``, ``#service[/resource]``,
+    ``type:…``, ``due:today|overdue|YYYY-MM-DD[..YYYY-MM-DD]``, ``created:…``.
+    """
+
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+        self._actor_user_id: str | None = None
+        self._people_cache: list[dict[str, Any]] | None = None
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        account_id = self._ctx.account_id()
+        if self._ctx.has_access_key:
+            return self._ctx.transport.console_signed_request(
+                method, path, account_id, **kwargs
+            )
+        self._ctx.require_console_session()
+        return self._ctx.transport.console_request(method, path, **kwargs)
+
+    def actor(self) -> dict[str, Any]:
+        """Current user: ``GET /me`` (JWT) or ``GET /access-key/whoami`` (SigV1)."""
+        account_id = self._ctx.account_id()
+        if self._ctx.has_access_key:
+            return self._ctx.transport.console_signed_request(
+                "GET", "access-key/whoami", account_id
+            )
+        self._ctx.require_console_session()
+        return self._ctx.transport.console_request("GET", "me")
+
+    def actor_user_id(self) -> str:
+        if self._actor_user_id:
+            return self._actor_user_id
+        info = self.actor()
+        uid = info.get("id") or info.get("principal_id")
+        if not uid:
+            raise HomeCloudError(
+                "Could not resolve current user id — use homecloud login "
+                "or a user-bound Access Key"
+            )
+        self._actor_user_id = str(uid)
+        return self._actor_user_id
+
+    def people(self) -> list[dict[str, Any]]:
+        if self._people_cache is not None:
+            return self._people_cache
+        account_id = self._ctx.account_id()
+        data = self._request("GET", f"accounts/{account_id}/tasks/people")
+        self._people_cache = data.get("items", [])
+        return self._people_cache
+
+    def resolve_user(self, ref: str) -> str:
+        """Resolve ``me``, ``@alice``, username, or UUID → user id."""
+        raw = (ref or "").strip().lstrip("@")
+        if not raw:
+            raise HomeCloudError("empty user reference")
+        if raw.lower() == "me":
+            return self.actor_user_id()
+        try:
+            import uuid as _uuid
+
+            return str(_uuid.UUID(raw))
+        except ValueError:
+            pass
+        matches = [
+            p
+            for p in self.people()
+            if str(p.get("username") or "").lower() == raw.lower()
+        ]
+        if not matches:
+            raise HomeCloudError(f"Unknown user: {ref}")
+        return str(matches[0]["id"])
+
+    def resolve_users(self, refs: Sequence[str]) -> list[str]:
+        return [self.resolve_user(r) for r in refs]
+
+    def list(
+        self,
+        *,
+        type: str | None = None,
+        status: str | None = None,
+        assignee: str | None = None,
+        watcher: str | None = None,
+        label: str | None = None,
+        project_id: str | None = None,
+        q: str | None = None,
+        due: str | None = None,
+        archived: bool = False,
+    ) -> list[dict[str, Any]]:
+        """List / search items. Prefer ``q`` for console-style smart search."""
+        account_id = self._ctx.account_id()
+        params: dict[str, Any] = {"archived": archived}
+        if type is not None:
+            params["type"] = type
+        if status is not None:
+            params["status"] = status
+        if assignee is not None:
+            params["assignee"] = assignee
+        if watcher is not None:
+            params["watcher"] = watcher
+        if label is not None:
+            params["label"] = label
+        if project_id is not None:
+            params["project_id"] = project_id
+        if q is not None:
+            params["q"] = q
+        if due is not None:
+            params["due"] = due
+        data = self._request(
+            "GET", f"accounts/{account_id}/tasks/items", params=params
+        )
+        return data.get("items", [])
+
+    def search(self, query: str = "", **filters: Any) -> list[dict[str, Any]]:
+        """Alias for ``list(q=query, …)`` — Jira-like smart search."""
+        return self.list(q=query or None, **filters)
+
+    def get(self, key: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request("GET", f"accounts/{account_id}/tasks/items/{key}")
+
+    def create(
+        self,
+        title: str,
+        *,
+        type: str = "task",
+        description: str | None = None,
+        description_format: str | None = None,
+        assignee_user_id: str | None = None,
+        assignee_user_ids: list[str] | None = None,
+        assignees: Sequence[str] | None = None,
+        due_at: str | None = None,
+        project_id: str | None = None,
+        priority: str | None = None,
+        severity: str | None = None,
+        services: list[str] | None = None,
+        label_names: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create an item. ``assignees`` accepts usernames / ``me`` / UUIDs."""
+        account_id = self._ctx.account_id()
+        body: dict[str, Any] = {"title": title, "type": type}
+        if description is not None:
+            body["description"] = description
+        if description_format is not None:
+            body["description_format"] = description_format
+        ids = list(assignee_user_ids or [])
+        if assignees:
+            ids.extend(self.resolve_users(assignees))
+        if assignee_user_id is not None:
+            body["assignee_user_id"] = (
+                self.resolve_user(assignee_user_id)
+                if not _looks_like_uuid(assignee_user_id)
+                else assignee_user_id
+            )
+        if ids:
+            body["assignee_user_ids"] = [
+                self.resolve_user(i) if not _looks_like_uuid(i) else i for i in ids
+            ]
+        if due_at is not None:
+            body["due_at"] = due_at
+        if project_id is not None:
+            body["project_id"] = project_id
+        if priority is not None:
+            body["priority"] = priority
+        if severity is not None:
+            body["severity"] = severity
+        if services is not None:
+            body["services"] = services
+        if label_names is not None:
+            body["label_names"] = label_names
+        return self._request(
+            "POST", f"accounts/{account_id}/tasks/items", json=body
+        )
+
+    def update(self, key: str, **fields: Any) -> dict[str, Any]:
+        """Patch an item. Pass ``assignees=["alice","me"]`` to set assignees by name."""
+        account_id = self._ctx.account_id()
+        body = dict(fields)
+        if "assignees" in body:
+            refs = body.pop("assignees")
+            if refs is not None:
+                body["assignee_user_ids"] = self.resolve_users(list(refs))
+        if body.get("assignee_user_id") and not _looks_like_uuid(str(body["assignee_user_id"])):
+            body["assignee_user_id"] = self.resolve_user(str(body["assignee_user_id"]))
+        if body.get("assignee_user_ids"):
+            body["assignee_user_ids"] = [
+                self.resolve_user(i) if not _looks_like_uuid(str(i)) else str(i)
+                for i in body["assignee_user_ids"]
+            ]
+        payload = {k: v for k, v in body.items() if v is not None or str(k).startswith("clear_")}
+        return self._request(
+            "PATCH", f"accounts/{account_id}/tasks/items/{key}", json=payload
+        )
+
+    def assign(self, key: str, *users: str) -> dict[str, Any]:
+        """Replace assignees (usernames / me / UUIDs)."""
+        if not users:
+            raise HomeCloudError("assign requires at least one user")
+        return self.update(key, assignees=list(users))
+
+    def assign_me(self, key: str, *, status: str | None = None) -> dict[str, Any]:
+        fields: dict[str, Any] = {"assignees": ["me"]}
+        if status is not None:
+            fields["status"] = status
+        return self.update(key, **fields)
+
+    def unassign(self, key: str) -> dict[str, Any]:
+        return self.update(key, clear_assignee=True)
+
+    def archive(self, key: str, *, cancel: bool = False) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/archive",
+            json={"cancel": cancel},
+        )
+
+    def restore(self, key: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST", f"accounts/{account_id}/tasks/items/{key}/restore", json={}
+        )
+
+    def delete(self, key: str) -> None:
+        account_id = self._ctx.account_id()
+        self._request("DELETE", f"accounts/{account_id}/tasks/items/{key}")
+
+    def activity(self, key: str) -> list[dict[str, Any]]:
+        account_id = self._ctx.account_id()
+        data = self._request(
+            "GET", f"accounts/{account_id}/tasks/items/{key}/activity"
+        )
+        return data.get("items", [])
+
+    def comment(
+        self,
+        key: str,
+        body: str,
+        *,
+        quote_comment_id: str | None = None,
+    ) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        payload: dict[str, Any] = {"body": body}
+        if quote_comment_id is not None:
+            payload["quote_comment_id"] = quote_comment_id
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/comments",
+            json=payload,
+        )
+
+    def comment_update(self, key: str, comment_id: str, body: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "PATCH",
+            f"accounts/{account_id}/tasks/items/{key}/comments/{comment_id}",
+            json={"body": body},
+        )
+
+    def comment_delete(self, key: str, comment_id: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/comments/{comment_id}",
+        )
+
+    def watch(self, key: str, user: str = "me") -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/watchers",
+            json={"user_id": self.resolve_user(user)},
+        )
+
+    def unwatch(self, key: str, user: str = "me") -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        uid = self.resolve_user(user)
+        return self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/watchers/{uid}",
+        )
+
+    def add_label(
+        self, key: str, name: str, *, color: str | None = None
+    ) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        body: dict[str, Any] = {"name": name}
+        if color is not None:
+            body["color"] = color
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/labels",
+            json=body,
+        )
+
+    def remove_label(self, key: str, label_id: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/labels/{label_id}",
+        )
+
+    def labels(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
+        account_id = self._ctx.account_id()
+        data = self._request(
+            "GET",
+            f"accounts/{account_id}/tasks/labels",
+            params={"include_archived": include_archived},
+        )
+        return data.get("items", [])
+
+    def create_label(self, name: str, *, color: str = "#64748b") -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/labels",
+            json={"name": name, "color": color},
+        )
+
+    def link_resource(
+        self,
+        key: str,
+        *,
+        resource_type: str,
+        resource_id: str,
+        resource_ref: str = "",
+    ) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/resources",
+            json={
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "resource_ref": resource_ref,
+            },
+        )
+
+    def unlink_resource(self, key: str, link_id: str) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/resources/{link_id}",
+        )
+
+    def create_share(
+        self,
+        key: str,
+        *,
+        expires_in: str = "never",
+        label: str | None = None,
+        include_discussion: bool = False,
+    ) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        body: dict[str, Any] = {
+            "expires_in": expires_in,
+            "include_discussion": include_discussion,
+        }
+        if label is not None:
+            body["label"] = label
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/shares",
+            json=body,
+        )
+
+    def list_shares(self, key: str) -> list[dict[str, Any]]:
+        account_id = self._ctx.account_id()
+        data = self._request(
+            "GET", f"accounts/{account_id}/tasks/items/{key}/shares"
+        )
+        return data.get("items", [])
+
+    def revoke_share(self, key: str, share_id: str) -> None:
+        account_id = self._ctx.account_id()
+        self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/shares/{share_id}",
+        )
+
+
+def _looks_like_uuid(value: str) -> bool:
+    try:
+        import uuid as _uuid
+
+        _uuid.UUID(value)
+        return True
+    except ValueError:
+        return False
+
+
+class DiagramsAPI:
+    """Account Diagrams — management plane (user JWT or user-bound Access Key SigV1)."""
+
+    def __init__(self, ctx: CoreContext) -> None:
+        self._ctx = ctx
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        account_id = self._ctx.account_id()
+        if self._ctx.has_access_key:
+            return self._ctx.transport.console_signed_request(
+                method, path, account_id, **kwargs
+            )
+        self._ctx.require_console_session()
+        return self._ctx.transport.console_request(method, path, **kwargs)
+
+    def list(self) -> list[dict[str, Any]]:
+        """List diagram summaries."""
+        account_id = self._ctx.account_id()
+        data = self._request("GET", f"accounts/{account_id}/diagrams")
+        return data.get("items", [])
+
+    def get(self, diagram_id: str) -> dict[str, Any]:
+        """Get a diagram including ``document``."""
+        account_id = self._ctx.account_id()
+        return self._request("GET", f"accounts/{account_id}/diagrams/{diagram_id}")
+
+    def create(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        document: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a diagram."""
+        account_id = self._ctx.account_id()
+        body: dict[str, Any] = {"name": name}
+        if description is not None:
+            body["description"] = description
+        if document is not None:
+            body["document"] = document
+        return self._request("POST", f"accounts/{account_id}/diagrams", json=body)
+
+    def update(
+        self,
+        diagram_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        document: dict[str, Any] | None = None,
+        revision: int | None = None,
+    ) -> dict[str, Any]:
+        """Patch a diagram. Pass ``revision`` for optimistic concurrency."""
+        account_id = self._ctx.account_id()
+        body: dict[str, Any] = {}
+        if name is not None:
+            body["name"] = name
+        if description is not None:
+            body["description"] = description
+        if document is not None:
+            body["document"] = document
+        if revision is not None:
+            body["revision"] = revision
+        return self._request(
+            "PATCH", f"accounts/{account_id}/diagrams/{diagram_id}", json=body
+        )
+
 class UsageAPI:
     def __init__(self, ctx: CoreContext) -> None:
         self._ctx = ctx

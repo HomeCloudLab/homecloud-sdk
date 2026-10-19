@@ -33,6 +33,8 @@ type Client struct {
 	Apps       *Apps
 	Queues     *Queues
 	IR         *IR
+	Tasks      *Tasks
+	Diagrams   *Diagrams
 	Usage      *Usage
 	Billing    *Billing
 	Monitoring *Monitoring
@@ -48,6 +50,8 @@ func (c *Client) bind() {
 	c.Apps = &Apps{c: c}
 	c.Queues = &Queues{c: c}
 	c.IR = &IR{c: c}
+	c.Tasks = &Tasks{c: c}
+	c.Diagrams = &Diagrams{c: c}
 	c.Usage = &Usage{c: c}
 	c.Billing = &Billing{c: c}
 	c.Monitoring = &Monitoring{c: c}

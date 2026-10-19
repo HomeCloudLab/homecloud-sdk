@@ -26,6 +26,8 @@ const { MqAPI } = require("./mq");
 const { SecretsAPI } = require("./secrets");
 const { MailAPI } = require("./mail");
 const { AccountsAPI, AppsAPI, QueuesAPI, FunctionsAPI } = require("./management");
+const { TasksAPI } = require("./tasks");
+const { DiagramsAPI } = require("./diagrams");
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -53,6 +55,8 @@ class HomeCloud {
     this.apps = new AppsAPI(this);
     this.queues = new QueuesAPI(this);
     this.functions = new FunctionsAPI(this);
+    this.tasks = new TasksAPI(this);
+    this.diagrams = new DiagramsAPI(this);
   }
 
   static fromEnv(opts = {}) {

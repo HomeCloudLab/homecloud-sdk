@@ -21,6 +21,7 @@
 | Secrets list + get | list only / get in Node | yes | yes | yes |
 | Mail list/get/attachments | yes | yes | yes | yes |
 | Functions / Apps / Accounts / Queues | yes | yes | yes | yes |
+| Tasks (tracker) + Diagrams | yes | yes | yes | yes |
 | IR / usage / billing / monitoring | yes | no | yes | yes |
 | Async client | `AsyncHomeCloud` | alias | `context.Context` on every call | sync v1 (`HttpClient.send`) |
 

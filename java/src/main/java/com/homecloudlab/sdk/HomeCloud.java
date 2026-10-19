@@ -39,6 +39,8 @@ public final class HomeCloud implements AutoCloseable {
     private final Apps apps;
     private final Queues queues;
     private final Ir ir;
+    private final Tasks tasks;
+    private final Diagrams diagrams;
     private final Usage usage;
     private final Billing billing;
     private final Monitoring monitoring;
@@ -147,6 +149,8 @@ public final class HomeCloud implements AutoCloseable {
         this.apps = new Apps(this);
         this.queues = new Queues(this);
         this.ir = new Ir(this);
+        this.tasks = new Tasks(this);
+        this.diagrams = new Diagrams(this);
         this.usage = new Usage(this);
         this.billing = new Billing(this);
         this.monitoring = new Monitoring(this);
@@ -265,6 +269,8 @@ public final class HomeCloud implements AutoCloseable {
     public Apps apps() { return apps; }
     public Queues queues() { return queues; }
     public Ir ir() { return ir; }
+    public Tasks tasks() { return tasks; }
+    public Diagrams diagrams() { return diagrams; }
     public Usage usage() { return usage; }
     public Billing billing() { return billing; }
     public Monitoring monitoring() { return monitoring; }
