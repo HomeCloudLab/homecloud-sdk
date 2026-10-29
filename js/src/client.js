@@ -339,12 +339,17 @@ class HomeCloud {
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
       }
     }
+    // Console access-key/whoami verifies SigV1 with account sentinel "-", not the account id.
+    const signAccountId =
+      rel === "access-key/whoami" || rel.startsWith("access-key/whoami?")
+        ? WHOAMI_ACCOUNT_SENTINEL
+        : this.accountId;
     const headers = signRequestHeaders({
       accessKeyId: this.accessKeyId,
       secret: this.secretAccessKey,
       method,
       path: `/api/v1/${rel}`,
-      accountId: this.accountId,
+      accountId: signAccountId,
       sessionToken: this.sessionToken,
     });
     const init = { method, headers, signal: AbortSignal.timeout(this.timeoutMs) };

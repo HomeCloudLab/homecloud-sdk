@@ -1819,6 +1819,50 @@ class ContainersAPI:
         return data.get("items", [])
 
 
+def _build_tasks_list_params(
+    *,
+    type: str | None = None,
+    status: str | None = None,
+    assignee: str | None = None,
+    watcher: str | None = None,
+    label: str | None = None,
+    project_id: str | None = None,
+    q: str | None = None,
+    due: str | None = None,
+    archived: bool = False,
+    external_id: str | None = None,
+    limit: int | None = None,
+    cursor: str | None = None,
+    sort: str | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"archived": archived}
+    if type is not None:
+        params["type"] = type
+    if status is not None:
+        params["status"] = status
+    if assignee is not None:
+        params["assignee"] = assignee
+    if watcher is not None:
+        params["watcher"] = watcher
+    if label is not None:
+        params["label"] = label
+    if project_id is not None:
+        params["project_id"] = project_id
+    if q is not None:
+        params["q"] = q
+    if due is not None:
+        params["due"] = due
+    if external_id is not None:
+        params["external_id"] = external_id
+    if limit is not None:
+        params["limit"] = limit
+    if cursor is not None:
+        params["cursor"] = cursor
+    if sort is not None:
+        params["sort"] = sort
+    return params
+
+
 class TasksAPI:
     """Account Tasks — full management plane (console-parity).
 
@@ -1846,10 +1890,12 @@ class TasksAPI:
 
     def actor(self) -> dict[str, Any]:
         """Current user: ``GET /me`` (JWT) or ``GET /access-key/whoami`` (SigV1)."""
-        account_id = self._ctx.account_id()
         if self._ctx.has_access_key:
+            # Console whoami string-to-sign uses sentinel "-", not the account id.
+            from homecloud_core.defaults import WHOAMI_ACCOUNT_SENTINEL
+
             return self._ctx.transport.console_signed_request(
-                "GET", "access-key/whoami", account_id
+                "GET", "access-key/whoami", WHOAMI_ACCOUNT_SENTINEL
             )
         self._ctx.require_console_session()
         return self._ctx.transport.console_request("GET", "me")
@@ -1900,6 +1946,44 @@ class TasksAPI:
     def resolve_users(self, refs: Sequence[str]) -> list[str]:
         return [self.resolve_user(r) for r in refs]
 
+    def list_page(
+        self,
+        *,
+        type: str | None = None,
+        status: str | None = None,
+        assignee: str | None = None,
+        watcher: str | None = None,
+        label: str | None = None,
+        project_id: str | None = None,
+        q: str | None = None,
+        due: str | None = None,
+        archived: bool = False,
+        external_id: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort: str | None = None,
+    ) -> dict[str, Any]:
+        """One page: ``{items, total, next_cursor}``."""
+        account_id = self._ctx.account_id()
+        params = _build_tasks_list_params(
+            type=type,
+            status=status,
+            assignee=assignee,
+            watcher=watcher,
+            label=label,
+            project_id=project_id,
+            q=q,
+            due=due,
+            archived=archived,
+            external_id=external_id,
+            limit=limit,
+            cursor=cursor,
+            sort=sort,
+        )
+        return self._request(
+            "GET", f"accounts/{account_id}/tasks/items", params=params
+        )
+
     def list(
         self,
         *,
@@ -1912,38 +1996,96 @@ class TasksAPI:
         q: str | None = None,
         due: str | None = None,
         archived: bool = False,
+        external_id: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort: str | None = None,
     ) -> list[dict[str, Any]]:
         """List / search items. Prefer ``q`` for console-style smart search."""
-        account_id = self._ctx.account_id()
-        params: dict[str, Any] = {"archived": archived}
-        if type is not None:
-            params["type"] = type
-        if status is not None:
-            params["status"] = status
-        if assignee is not None:
-            params["assignee"] = assignee
-        if watcher is not None:
-            params["watcher"] = watcher
-        if label is not None:
-            params["label"] = label
-        if project_id is not None:
-            params["project_id"] = project_id
-        if q is not None:
-            params["q"] = q
-        if due is not None:
-            params["due"] = due
-        data = self._request(
-            "GET", f"accounts/{account_id}/tasks/items", params=params
-        )
-        return data.get("items", [])
+        return self.list_page(
+            type=type,
+            status=status,
+            assignee=assignee,
+            watcher=watcher,
+            label=label,
+            project_id=project_id,
+            q=q,
+            due=due,
+            archived=archived,
+            external_id=external_id,
+            limit=limit,
+            cursor=cursor,
+            sort=sort,
+        ).get("items", [])
+
+    def list_all(
+        self,
+        *,
+        type: str | None = None,
+        status: str | None = None,
+        assignee: str | None = None,
+        watcher: str | None = None,
+        label: str | None = None,
+        project_id: str | None = None,
+        q: str | None = None,
+        due: str | None = None,
+        archived: bool = False,
+        external_id: str | None = None,
+        sort: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Follow ``next_cursor`` until exhausted; de-dupe by ``id`` then ``key``."""
+        seen: set[str] = set()
+        out: list[dict[str, Any]] = []
+        cursor: str | None = None
+        page_limit = limit if limit is not None else 200
+        while True:
+            page = self.list_page(
+                type=type,
+                status=status,
+                assignee=assignee,
+                watcher=watcher,
+                label=label,
+                project_id=project_id,
+                q=q,
+                due=due,
+                archived=archived,
+                external_id=external_id,
+                sort=sort,
+                limit=page_limit,
+                cursor=cursor,
+            )
+            for item in page.get("items", []):
+                token = str(item.get("id") or item.get("key") or "")
+                if not token or token in seen:
+                    continue
+                seen.add(token)
+                out.append(item)
+            cursor = page.get("next_cursor")
+            if not cursor:
+                break
+        return out
 
     def search(self, query: str = "", **filters: Any) -> list[dict[str, Any]]:
         """Alias for ``list(q=query, …)`` — Jira-like smart search."""
         return self.list(q=query or None, **filters)
 
-    def get(self, key: str) -> dict[str, Any]:
+    def get(self, key: str, *, mark_seen: bool = True) -> dict[str, Any]:
+        """Fetch one item. Set ``mark_seen=False`` for read-only (no discussion seen)."""
         account_id = self._ctx.account_id()
-        return self._request("GET", f"accounts/{account_id}/tasks/items/{key}")
+        params: dict[str, Any] = {}
+        if not mark_seen:
+            params["mark_seen"] = "false"
+        return self._request(
+            "GET",
+            f"accounts/{account_id}/tasks/items/{key}",
+            params=params or None,
+        )
+
+    def schema(self) -> dict[str, Any]:
+        """Valid types, statuses, priorities, and legal transitions."""
+        account_id = self._ctx.account_id()
+        return self._request("GET", f"accounts/{account_id}/tasks/schema")
 
     def create(
         self,
@@ -1952,6 +2094,8 @@ class TasksAPI:
         type: str = "task",
         description: str | None = None,
         description_format: str | None = None,
+        status: str | None = None,
+        external_id: str | None = None,
         assignee_user_id: str | None = None,
         assignee_user_ids: list[str] | None = None,
         assignees: Sequence[str] | None = None,
@@ -1961,14 +2105,33 @@ class TasksAPI:
         severity: str | None = None,
         services: list[str] | None = None,
         label_names: list[str] | None = None,
+        parent_id: str | None = None,
+        parent_key: str | None = None,
+        parent_external_id: str | None = None,
+        issue_type_id: str | None = None,
+        custom_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create an item. ``assignees`` accepts usernames / ``me`` / UUIDs."""
         account_id = self._ctx.account_id()
         body: dict[str, Any] = {"title": title, "type": type}
+        if external_id is not None:
+            body["external_id"] = external_id
+        if parent_id is not None:
+            body["parent_id"] = parent_id
+        if parent_key is not None:
+            body["parent_key"] = parent_key
+        if parent_external_id is not None:
+            body["parent_external_id"] = parent_external_id
+        if issue_type_id is not None:
+            body["issue_type_id"] = issue_type_id
+        if custom_fields is not None:
+            body["custom_fields"] = custom_fields
         if description is not None:
             body["description"] = description
         if description_format is not None:
             body["description_format"] = description_format
+        if status is not None:
+            body["status"] = status
         ids = list(assignee_user_ids or [])
         if assignees:
             ids.extend(self.resolve_users(assignees))
@@ -2016,6 +2179,68 @@ class TasksAPI:
         payload = {k: v for k, v in body.items() if v is not None or str(k).startswith("clear_")}
         return self._request(
             "PATCH", f"accounts/{account_id}/tasks/items/{key}", json=payload
+        )
+
+    def upsert_by_external(self, external_id: str, **fields: Any) -> dict[str, Any]:
+        """Create or update by ``external_id`` (``PUT /items/by-external/…``)."""
+        account_id = self._ctx.account_id()
+        body = dict(fields)
+        if "assignees" in body:
+            refs = body.pop("assignees")
+            if refs is not None:
+                body["assignee_user_ids"] = self.resolve_users(list(refs))
+        if body.get("assignee_user_id") and not _looks_like_uuid(str(body["assignee_user_id"])):
+            body["assignee_user_id"] = self.resolve_user(str(body["assignee_user_id"]))
+        if body.get("assignee_user_ids"):
+            body["assignee_user_ids"] = [
+                self.resolve_user(i) if not _looks_like_uuid(str(i)) else str(i)
+                for i in body["assignee_user_ids"]
+            ]
+        payload = {k: v for k, v in body.items() if v is not None or str(k).startswith("clear_")}
+        return self._request(
+            "PUT",
+            f"accounts/{account_id}/tasks/items/by-external/{external_id}",
+            json=payload,
+        )
+
+    def bulk_create(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/bulk",
+            json={"items": items},
+        )
+
+    def bulk_delete(self, keys: list[str]) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/bulk-delete",
+            json={"keys": keys},
+        )
+
+    def link_relation(
+        self, key: str, to_key: str, relation_type: str
+    ) -> dict[str, Any]:
+        account_id = self._ctx.account_id()
+        return self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/relations",
+            json={"to_key": to_key, "relation_type": relation_type},
+        )
+
+    def list_relations(self, key: str) -> list[dict[str, Any]]:
+        account_id = self._ctx.account_id()
+        data = self._request(
+            "GET", f"accounts/{account_id}/tasks/items/{key}/relations"
+        )
+        return data.get("items", [])
+
+    def unlink_relation(self, key: str, relation_id: str) -> None:
+        account_id = self._ctx.account_id()
+        self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/relations/{relation_id}",
         )
 
     def assign(self, key: str, *users: str) -> dict[str, Any]:

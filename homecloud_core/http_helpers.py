@@ -14,7 +14,20 @@ from homecloud_core.signing import sign_request_headers
 Plane = Literal["console", "mq", "so", "secrets", "mail"]
 
 MAX_RETRIES = 2
-RETRY_STATUS = {502, 503, 504}
+RETRY_STATUS = {429, 502, 503, 504}
+MAX_RETRY_AFTER_SECONDS = 120.0
+
+
+def retry_delay_seconds(response: httpx.Response | None, attempt: int) -> float:
+    """Backoff before retrying; honors ``Retry-After`` on 429 when present."""
+    if response is not None and response.status_code == 429:
+        raw = response.headers.get("Retry-After")
+        if raw:
+            try:
+                return min(max(float(raw.strip()), 0.0), MAX_RETRY_AFTER_SECONDS)
+            except ValueError:
+                pass
+    return 0.5 * (attempt + 1)
 
 
 def require_access_key(access_key_id: str | None, secret_access_key: str | None) -> None:

@@ -14,6 +14,7 @@ from homecloud_core.errors import HomeCloudError, NotLoggedInError
 from homecloud_core.http_helpers import (
     MAX_RETRIES,
     RETRY_STATUS,
+    retry_delay_seconds,
     Plane,
     console_request_url,
     error_from_failed_response,
@@ -232,7 +233,7 @@ class AsyncTransport:
                     f"Request failed ({response.status_code})",
                     status_code=response.status_code,
                 )
-                await asyncio.sleep(0.5 * (attempt + 1))
+                await asyncio.sleep(retry_delay_seconds(response, attempt))
             raise last_error or HomeCloudError("Request failed")
         if require_auth and not self.access_token:
             raise NotLoggedInError("Not logged in. Run: homecloud login")
@@ -260,7 +261,7 @@ class AsyncTransport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            await asyncio.sleep(0.5 * (attempt + 1))
+            await asyncio.sleep(retry_delay_seconds(response, attempt))
         raise last_error or HomeCloudError("Request failed")
 
     async def console_signed_request(
@@ -327,7 +328,7 @@ class AsyncTransport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            await asyncio.sleep(0.5 * (attempt + 1))
+            await asyncio.sleep(retry_delay_seconds(response, attempt))
         raise last_error or HomeCloudError("Request failed")
 
     async def data_plane_download_to_file(
@@ -491,7 +492,7 @@ class AsyncTransport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            await asyncio.sleep(0.5 * (attempt + 1))
+            await asyncio.sleep(retry_delay_seconds(response, attempt))
         raise last_error or HomeCloudError("Request failed")
 
     async def resolve_access_key_account_id(self) -> str:

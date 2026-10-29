@@ -35,7 +35,8 @@ func (t *Tasks) Actor(ctx context.Context) (map[string]any, error) {
 		err error
 	)
 	if t.c.hasAccessKey() {
-		raw, err = t.c.consoleSignedJSON(ctx, http.MethodGet, "access-key/whoami", t.c.accountID)
+		// Console whoami SigV1 uses sentinel "-", not the resolved account id.
+		raw, err = t.c.consoleSignedJSON(ctx, http.MethodGet, "access-key/whoami", whoamiAccountSentinel)
 	} else {
 		raw, err = t.c.consoleJSON(ctx, http.MethodGet, "me", true)
 	}

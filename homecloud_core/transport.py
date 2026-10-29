@@ -16,6 +16,7 @@ from homecloud_core.errors import HomeCloudError, NotLoggedInError
 from homecloud_core.http_helpers import (
     MAX_RETRIES,
     RETRY_STATUS,
+    retry_delay_seconds,
     Plane,
     error_from_failed_response,
     parse_response,
@@ -208,7 +209,7 @@ class Transport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            time.sleep(0.5 * (attempt + 1))
+            time.sleep(retry_delay_seconds(response, attempt))
         raise last_error or HomeCloudError("Request failed")
 
     def _console_api_base(self) -> str:
@@ -352,7 +353,7 @@ class Transport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            time.sleep(0.5 * (attempt + 1))
+            time.sleep(retry_delay_seconds(response, attempt))
         raise last_error or HomeCloudError("Request failed")
 
     def data_plane_request_bytes(
@@ -398,7 +399,7 @@ class Transport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            time.sleep(0.5 * (attempt + 1))
+            time.sleep(retry_delay_seconds(response, attempt))
         raise last_error or HomeCloudError("Request failed")
 
     def data_plane_download_to_file(
@@ -446,7 +447,7 @@ class Transport:
                             f"Request failed ({response.status_code})",
                             status_code=response.status_code,
                         )
-                        time.sleep(0.5 * (attempt + 1))
+                        time.sleep(retry_delay_seconds(response, attempt))
                         continue
                     if not response.is_success:
                         # Materialize body so error_from_failed_response can parse JSON.
@@ -569,7 +570,7 @@ class Transport:
                 f"Request failed ({response.status_code})",
                 status_code=response.status_code,
             )
-            time.sleep(0.5 * (attempt + 1))
+            time.sleep(retry_delay_seconds(response, attempt))
         raise last_error or HomeCloudError("Request failed")
 
     def resolve_access_key_account_id(self) -> str:

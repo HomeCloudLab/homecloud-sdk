@@ -73,7 +73,8 @@ public final class Tasks {
         c.ensureAccountId();
         byte[] raw;
         if (c.hasAccessKey()) {
-            raw = c.consoleSignedJson("GET", "access-key/whoami", c.accountIdOrEmpty(), null, null, null);
+            // Console whoami SigV1 uses sentinel "-", not the resolved account id.
+            raw = c.consoleSignedJson("GET", "access-key/whoami", Env.WHOAMI_ACCOUNT_SENTINEL, null, null, null);
         } else {
             raw = c.consoleJson("GET", "me", true, null, null, null, null);
         }

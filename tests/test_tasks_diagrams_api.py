@@ -56,6 +56,9 @@ def test_tasks_resolve_user_and_assign() -> None:
     ]
     api = TasksAPI(ctx)
     assert api.resolve_user("me") == me_id
+    ctx.transport.console_signed_request.assert_any_call(
+        "GET", "access-key/whoami", "-"
+    )
     assert api.resolve_user("@alice") == alice_id
     api.assign_me("TASK-1", status="in_progress")
     api.comment("TASK-1", "hello")
@@ -77,6 +80,45 @@ def test_tasks_resolve_unknown_user() -> None:
     api = TasksAPI(ctx)
     with pytest.raises(HomeCloudError, match="Unknown user"):
         api.resolve_user("nobody")
+
+
+def test_tasks_list_page_and_upsert_bulk_relations() -> None:
+    ctx = MagicMock()
+    ctx.account_id.return_value = "acc-1"
+    ctx.has_access_key = True
+    ctx.transport.console_signed_request.side_effect = [
+        {"items": [{"key": "TASK-1", "id": "id-1"}], "total": 1, "next_cursor": "c2"},
+        {"items": [{"key": "TASK-2", "id": "id-2"}], "total": 2, "next_cursor": None},
+        {"items": [{"key": "TASK-1", "id": "id-1"}], "total": 1, "next_cursor": "c2"},
+        {"key": "TASK-9", "external_id": "ext-1", "title": "Upserted"},
+        {"results": [], "created": 1, "failed": 0},
+        {"results": [], "created": 1, "failed": 0},
+        {"id": "rel-1", "relation_type": "blocks", "from_key": "TASK-1", "to_key": "TASK-2"},
+        {"items": [{"id": "rel-1"}], "total": 1},
+        None,
+    ]
+    api = TasksAPI(ctx)
+
+    all_items = api.list_all(status="open")
+    assert {i["key"] for i in all_items} == {"TASK-1", "TASK-2"}
+    page = api.list_page(status="open", limit=50, sort="-sequence", external_id="ext-1")
+    assert page["next_cursor"] == "c2"
+
+    upserted = api.upsert_by_external("ext-1", title="Upserted")
+    assert upserted["key"] == "TASK-9"
+    api.bulk_create([{"title": "A"}])
+    api.bulk_delete(["TASK-1"])
+    rel = api.link_relation("TASK-1", "TASK-2", "blocks")
+    assert rel["id"] == "rel-1"
+    assert api.list_relations("TASK-1")[0]["id"] == "rel-1"
+    api.unlink_relation("TASK-1", "rel-1")
+
+    ctx.transport.console_signed_request.assert_any_call(
+        "PUT",
+        "accounts/acc-1/tasks/items/by-external/ext-1",
+        "acc-1",
+        json={"title": "Upserted"},
+    )
 
 
 def test_tasks_jwt_fallback() -> None:

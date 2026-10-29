@@ -1572,10 +1572,12 @@ class AsyncTasksAPI:
         return await self._ctx.transport.console_request(method, path, **kwargs)
 
     async def actor(self) -> dict[str, Any]:
-        account_id = await self._ctx.account_id()
         if self._ctx.has_access_key:
+            # Console whoami string-to-sign uses sentinel "-", not the account id.
+            from homecloud_core.defaults import WHOAMI_ACCOUNT_SENTINEL
+
             return await self._ctx.transport.console_signed_request(
-                "GET", "access-key/whoami", account_id
+                "GET", "access-key/whoami", WHOAMI_ACCOUNT_SENTINEL
             )
         self._ctx.require_console_session()
         return await self._ctx.transport.console_request("GET", "me")
@@ -1620,6 +1622,45 @@ class AsyncTasksAPI:
             raise HomeCloudError(f"Unknown user: {ref}")
         return str(matches[0]["id"])
 
+    async def list_page(
+        self,
+        *,
+        type: str | None = None,
+        status: str | None = None,
+        assignee: str | None = None,
+        watcher: str | None = None,
+        label: str | None = None,
+        project_id: str | None = None,
+        q: str | None = None,
+        due: str | None = None,
+        archived: bool = False,
+        external_id: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort: str | None = None,
+    ) -> dict[str, Any]:
+        from homecloud_sdk.services import _build_tasks_list_params
+
+        account_id = await self._ctx.account_id()
+        params = _build_tasks_list_params(
+            type=type,
+            status=status,
+            assignee=assignee,
+            watcher=watcher,
+            label=label,
+            project_id=project_id,
+            q=q,
+            due=due,
+            archived=archived,
+            external_id=external_id,
+            limit=limit,
+            cursor=cursor,
+            sort=sort,
+        )
+        return await self._request(
+            "GET", f"accounts/{account_id}/tasks/items", params=params
+        )
+
     async def list(
         self,
         *,
@@ -1632,36 +1673,92 @@ class AsyncTasksAPI:
         q: str | None = None,
         due: str | None = None,
         archived: bool = False,
+        external_id: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort: str | None = None,
     ) -> list[dict[str, Any]]:
-        account_id = await self._ctx.account_id()
-        params: dict[str, Any] = {"archived": archived}
-        if type is not None:
-            params["type"] = type
-        if status is not None:
-            params["status"] = status
-        if assignee is not None:
-            params["assignee"] = assignee
-        if watcher is not None:
-            params["watcher"] = watcher
-        if label is not None:
-            params["label"] = label
-        if project_id is not None:
-            params["project_id"] = project_id
-        if q is not None:
-            params["q"] = q
-        if due is not None:
-            params["due"] = due
-        data = await self._request(
-            "GET", f"accounts/{account_id}/tasks/items", params=params
+        page = await self.list_page(
+            type=type,
+            status=status,
+            assignee=assignee,
+            watcher=watcher,
+            label=label,
+            project_id=project_id,
+            q=q,
+            due=due,
+            archived=archived,
+            external_id=external_id,
+            limit=limit,
+            cursor=cursor,
+            sort=sort,
         )
-        return data.get("items", [])
+        return page.get("items", [])
+
+    async def list_all(
+        self,
+        *,
+        type: str | None = None,
+        status: str | None = None,
+        assignee: str | None = None,
+        watcher: str | None = None,
+        label: str | None = None,
+        project_id: str | None = None,
+        q: str | None = None,
+        due: str | None = None,
+        archived: bool = False,
+        external_id: str | None = None,
+        sort: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        seen: set[str] = set()
+        out: list[dict[str, Any]] = []
+        cursor: str | None = None
+        page_limit = limit if limit is not None else 200
+        while True:
+            page = await self.list_page(
+                type=type,
+                status=status,
+                assignee=assignee,
+                watcher=watcher,
+                label=label,
+                project_id=project_id,
+                q=q,
+                due=due,
+                archived=archived,
+                external_id=external_id,
+                sort=sort,
+                limit=page_limit,
+                cursor=cursor,
+            )
+            for item in page.get("items", []):
+                token = str(item.get("id") or item.get("key") or "")
+                if not token or token in seen:
+                    continue
+                seen.add(token)
+                out.append(item)
+            cursor = page.get("next_cursor")
+            if not cursor:
+                break
+        return out
 
     async def search(self, query: str = "", **filters: Any) -> list[dict[str, Any]]:
         return await self.list(q=query or None, **filters)
 
-    async def get(self, key: str) -> dict[str, Any]:
+    async def get(self, key: str, *, mark_seen: bool = True) -> dict[str, Any]:
         account_id = await self._ctx.account_id()
-        return await self._request("GET", f"accounts/{account_id}/tasks/items/{key}")
+        params: dict[str, Any] = {}
+        if not mark_seen:
+            params["mark_seen"] = "false"
+        return await self._request(
+            "GET",
+            f"accounts/{account_id}/tasks/items/{key}",
+            params=params or None,
+        )
+
+    async def schema(self) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request("GET", f"accounts/{account_id}/tasks/schema")
 
     async def create(
         self,
@@ -1670,6 +1767,8 @@ class AsyncTasksAPI:
         type: str = "task",
         description: str | None = None,
         description_format: str | None = None,
+        status: str | None = None,
+        external_id: str | None = None,
         assignee_user_id: str | None = None,
         assignee_user_ids: list[str] | None = None,
         assignees: list[str] | None = None,
@@ -1684,10 +1783,14 @@ class AsyncTasksAPI:
 
         account_id = await self._ctx.account_id()
         body: dict[str, Any] = {"title": title, "type": type}
+        if external_id is not None:
+            body["external_id"] = external_id
         if description is not None:
             body["description"] = description
         if description_format is not None:
             body["description_format"] = description_format
+        if status is not None:
+            body["status"] = status
         ids = list(assignee_user_ids or [])
         if assignees:
             for ref in assignees:
@@ -1733,6 +1836,64 @@ class AsyncTasksAPI:
         payload = {k: v for k, v in body.items() if v is not None or str(k).startswith("clear_")}
         return await self._request(
             "PATCH", f"accounts/{account_id}/tasks/items/{key}", json=payload
+        )
+
+    async def upsert_by_external(self, external_id: str, **fields: Any) -> dict[str, Any]:
+        from homecloud_sdk.services import _looks_like_uuid
+
+        account_id = await self._ctx.account_id()
+        body = dict(fields)
+        if "assignees" in body:
+            refs = body.pop("assignees")
+            if refs is not None:
+                body["assignee_user_ids"] = [await self.resolve_user(r) for r in refs]
+        if body.get("assignee_user_id") and not _looks_like_uuid(str(body["assignee_user_id"])):
+            body["assignee_user_id"] = await self.resolve_user(str(body["assignee_user_id"]))
+        payload = {k: v for k, v in body.items() if v is not None or str(k).startswith("clear_")}
+        return await self._request(
+            "PUT",
+            f"accounts/{account_id}/tasks/items/by-external/{external_id}",
+            json=payload,
+        )
+
+    async def bulk_create(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/bulk",
+            json={"items": items},
+        )
+
+    async def bulk_delete(self, keys: list[str]) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/bulk-delete",
+            json={"keys": keys},
+        )
+
+    async def link_relation(
+        self, key: str, to_key: str, relation_type: str
+    ) -> dict[str, Any]:
+        account_id = await self._ctx.account_id()
+        return await self._request(
+            "POST",
+            f"accounts/{account_id}/tasks/items/{key}/relations",
+            json={"to_key": to_key, "relation_type": relation_type},
+        )
+
+    async def list_relations(self, key: str) -> list[dict[str, Any]]:
+        account_id = await self._ctx.account_id()
+        data = await self._request(
+            "GET", f"accounts/{account_id}/tasks/items/{key}/relations"
+        )
+        return data.get("items", [])
+
+    async def unlink_relation(self, key: str, relation_id: str) -> None:
+        account_id = await self._ctx.account_id()
+        await self._request(
+            "DELETE",
+            f"accounts/{account_id}/tasks/items/{key}/relations/{relation_id}",
         )
 
     async def assign(self, key: str, *users: str) -> dict[str, Any]:
