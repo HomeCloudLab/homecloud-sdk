@@ -9,4 +9,4 @@ package homecloud
 
 // Version matches homecloud-sdk / @homecloud-platform/sdk. Go modules also
 // require git tag go/v<Version> in this subdirectory.
-const Version = "0.5.21"
+const Version = "0.5.22"

@@ -23,6 +23,42 @@ jobs:
           server-id: github
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
+      - name: Sync pom version from tag
+        if: github.ref_type == 'tag'
+        working-directory: java
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Invalid version from tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          python - <<PY
+          from pathlib import Path
+          import re
+          ver = "${VER}"
+          pom = Path("pom.xml")
+          text = pom.read_text(encoding="utf-8")
+          text2, n = re.subn(
+              r"(<artifactId>homecloud-sdk</artifactId>\s*<version>)[^<]+",
+              rf"\g<1>{ver}",
+              text,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit("java/pom.xml version not updated")
+          pom.write_text(text2, encoding="utf-8")
+          print(f"pom.xml → {ver}")
+          vjava = Path("src/main/java/com/homecloudlab/sdk/Version.java")
+          if vjava.exists():
+              jt = vjava.read_text(encoding="utf-8")
+              jt2, n = re.subn(r'VALUE = "[^"]*"', f'VALUE = "{ver}"', jt, count=1)
+              if n != 1:
+                  raise SystemExit("Version.java not updated")
+              vjava.write_text(jt2, encoding="utf-8")
+              print(f"Version.java → {ver}")
+          PY
+
       - name: Publish
         working-directory: java
         env:

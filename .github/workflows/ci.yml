@@ -7,6 +7,36 @@ on:
     branches: [main, master, dev]
 
 jobs:
+  versions-in-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check language package versions match
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, re
+          root = Path(".")
+          py = re.search(r'(?m)^version\s*=\s*"([^"]+)"', (root / "pyproject.toml").read_text(encoding="utf-8")).group(1)
+          js = json.loads((root / "js" / "package.json").read_text(encoding="utf-8"))["version"]
+          go = re.search(r'const Version = "([^"]+)"', (root / "go" / "doc.go").read_text(encoding="utf-8")).group(1)
+          pom = re.search(
+              r"<artifactId>homecloud-sdk</artifactId>\s*<version>([^<]+)</version>",
+              (root / "java" / "pom.xml").read_text(encoding="utf-8"),
+          ).group(1)
+          jv = re.search(
+              r'VALUE = "([^"]+)"',
+              (root / "java" / "src" / "main" / "java" / "com" / "homecloudlab" / "sdk" / "Version.java").read_text(encoding="utf-8"),
+          ).group(1)
+          versions = {"py": py, "js": js, "go": go, "pom": pom, "Version.java": jv}
+          print(versions)
+          if len(set(versions.values())) != 1:
+              raise SystemExit(f"SDK versions out of sync: {versions}")
+          PY
+
   test-python:
     runs-on: ubuntu-latest
     steps:
